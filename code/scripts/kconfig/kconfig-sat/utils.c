@@ -12,6 +12,7 @@
 #include "satconf.h"
 
 static struct k_expr * gcc_version_eval(struct expr *e);
+static struct k_expr * expr_eval_unequal_bool(struct expr *e);
 
 /*
  * parse Kconfig-file and read .config
@@ -243,10 +244,6 @@ static struct k_expr * gcc_version_eval(struct expr* e)
 {
 	if (!e) get_const_false_as_kexpr();
 	
-// 	print_expr("expr:", e, 0);
-// 	printf("type: %d\n", e->type);
-// 	print_sym_name(e->left.sym);
-// 	print_sym_name(e->right.sym);
 	long long actual_gcc_ver, sym_gcc_ver;
 	if (e->left.sym == sym_find("GCC_VERSION")) {
 		actual_gcc_ver = strtoll(sym_get_string_value(e->left.sym), NULL, 10);
@@ -255,7 +252,6 @@ static struct k_expr * gcc_version_eval(struct expr* e)
 		actual_gcc_ver = strtoll(sym_get_string_value(e->right.sym), NULL, 10);
 		sym_gcc_ver = strtoll(e->left.sym->name, NULL, 10);
 	}
-// 	printf("actual_gcc_ver: %lld, sym_gcc_ver: %lld\n", actual_gcc_ver, sym_gcc_ver);
 	
 	switch (e->type) {
 	case E_LTH:
@@ -268,6 +264,35 @@ static struct k_expr * gcc_version_eval(struct expr* e)
 		return actual_gcc_ver >= sym_gcc_ver ? get_const_true_as_kexpr() : get_const_false_as_kexpr();
 	default:
 		perror("Wrong type in gcc_version_eval.");
+	}
+	
+	return get_const_false_as_kexpr();
+}
+
+/*
+ * evaluate an unequality with 2 boolean symbols
+ */
+static struct k_expr * expr_eval_unequal_bool(struct expr *e)
+{
+	if (!e) get_const_false_as_kexpr();
+	
+	assert(sym_is_boolean(e->left.sym));
+	assert(sym_is_boolean(e->right.sym));
+	
+	int val_left = sym_get_tristate_value(e->left.sym);
+	int val_right = sym_get_tristate_value(e->right.sym);
+	
+	switch (e->type) {
+	case E_LTH:
+		return val_left < val_right ? get_const_true_as_kexpr() : get_const_false_as_kexpr();
+	case E_LEQ:
+		return val_left <= val_right ? get_const_true_as_kexpr() : get_const_false_as_kexpr();
+	case E_GTH:
+		return val_left > val_right ? get_const_true_as_kexpr() : get_const_false_as_kexpr();
+	case E_GEQ:
+		return val_left >= val_right ? get_const_true_as_kexpr() : get_const_false_as_kexpr();
+	default:
+		perror("Wrong type in expr_eval_unequal_bool.");
 	}
 	
 	return get_const_false_as_kexpr();
@@ -320,12 +345,17 @@ struct k_expr * parse_expr(struct expr *e, struct k_expr *parent)
 	case E_GTH:
 	case E_GEQ:
 		// TODO
-		//print_expr("UNEQUAL:", e, 0);
-		// "special" hack for GCC_VERSION
-		if (!expr_contains_symbol(e, sym_find("GCC_VERSION")))
-			return get_const_false_as_kexpr();
+// 		print_expr("UNEQUAL:", e, 0);
 		
-		return gcc_version_eval(e);
+		/* "special" hack for GCC_VERSION */
+		if (expr_contains_symbol(e, sym_find("GCC_VERSION")))
+			return gcc_version_eval(e);
+		
+		/* "special" hack for CRAMFS <= MTD */
+		if (expr_contains_symbol(e, sym_find("CRAMFS")) && expr_contains_symbol(e, sym_find("MTD")))
+			return expr_eval_unequal_bool(e);
+		
+		return get_const_false_as_kexpr();
 	default:
 		return NULL;
 	}

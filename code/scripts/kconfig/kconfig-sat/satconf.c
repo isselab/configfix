@@ -201,24 +201,12 @@ GArray * run_satconf(GArray *arr)
 	time = ((double) (end - start)) / CLOCKS_PER_SEC;
 	
 	printf("done. (%.6f secs.)\n", time);
-	
-// 	printf("CNF-clauses added: %d\n", picosat_added_original_clauses(pico));
 
 	/* add unit clauses for each symbol */
 	unsigned int i;
 	struct symbol_dvalue *sdv;
 	for (i = 0; i < arr->len; i++) {
 		sdv = g_array_index(arr, struct symbol_dvalue *, i);
-// 		printf("Adding unit-clause: %s -> %s\n", sym_get_name(sdv->sym), tristate_get_char(sdv->tri));
-		
-// 		if (sdv->sym->rev_dep.expr) {
-// 			int eval = expr_calc_value(sdv->sym->rev_dep.expr);
-// 			printf("Rev.dep value: %s\n", tristate_get_char(eval));
-// 			if (eval == no)
-// 				picosat_assume(pico, -sdv->sym->fexpr_sel_y->satval);
-// 			else if (eval == yes)
-// 				picosat_assume(pico, sdv->sym->fexpr_sel_y->satval);
-// 		}
 		
 		if (sdv->sym->type == S_BOOLEAN) {
 			switch (sdv->tri) {
@@ -280,38 +268,6 @@ GArray * run_satconf(GArray *arr)
 // 		GArray *ret = rangefix_init(pico);
 		free(pico);
 		return ret;
-		
-// 		struct symbol *sym;
-// 		unsigned int i;
-// 		bool found = false;
-// 		
-// 		/* check, if a symbol has been selected, but has unmet dependencies */
-// 		for_all_symbols(i, sym) {
-// 			if (sym->dir_dep.tri < sym->rev_dep.tri) {
-// 				found = true;
-// 				sym_warn_unmet_dep(sym);
-// 				add_select_constraints(pico, sym);
-// 			}
-// 		}
-// 		if (!found) return;
-// 		printf("\n");
-// 		
-// 		/* add assumptions again */
-// 		for_all_symbols(i, sym)
-// 			sym_add_assumption(pico, sym);
-// 		
-// 		int res = picosat_sat(pico, -1);
-// 		
-// 		/* problem should be unsatisfiable now */
-// 		if (res == PICOSAT_UNSATISFIABLE) {
-// 			return rangefix_init(pico);
-// 		} else {
-// 			printf("SOMETHING IS A MISS. PROBLEM IS NOT UNSATISFIABLE.\n");
-// 			return NULL;
-// 		}
-		
-// 		printf("All CNFs:\n");
-// 		print_all_cnf_clauses( cnf_clauses );
 		
 	} else if (res == PICOSAT_UNSATISFIABLE) {
 		printf("===> PROBLEM IS UNSATISFIABLE <===\n");

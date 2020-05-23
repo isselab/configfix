@@ -39,21 +39,13 @@ void construct_cnf_clauses(PicoSAT *p)
 	picosat_add_arg(pico, -(const_false->satval), 0);
 	picosat_add_arg(pico, const_true->satval, 0);
 	
-// 	printf("Constructing CNF-clauses...");
-	
 // 	printf("\n");
-	
-	unsigned int k, l;
 
 	for_all_symbols(i, sym) {
 		if (sym->type == S_UNKNOWN) continue;
 		
 // 		print_sym_name(sym);
 // 		print_sym_constraint(sym);
-		
-// 		if (sym->name && strcmp(sym->name, "REGMAP_I2C") == 0) {
-// 			print_symbol(sym);
-// 		}
 		
 		struct fexpr *e;
 		for (j = 0; j < sym->constraints->arr->len; j++) {
@@ -66,19 +58,10 @@ void construct_cnf_clauses(PicoSAT *p)
 				unfold_cnf_clause(e);
 			} else {
 // 				print_fexpr("!Not CNF:", e, -1);
-// 				k = tmp_variable_nr;
 				build_cnf_tseytin(e);
-// 				l = tmp_variable_nr;
-// 				if (l - k > 140000) {
-// 					print_fexpr("e:", e, -1);
-// 					print_sym_name(sym);
-// 					printf("Diff: %d\n", l - k);
-// 				}
 			}
 		}
 	}
-
-// 	printf("done.\n");
 }
 
 /*

@@ -84,7 +84,7 @@ static GArray * generate_diagnoses(PicoSAT *pico)
 // 	unsigned int t;
 // 	GArray *tmp;
 	
-	printf("\n");
+// 	printf("\n");
 	
 	/* create constraint set C */
 	add_fexpr_to_constraint_set(C);
@@ -134,7 +134,7 @@ static GArray * generate_diagnoses(PicoSAT *pico)
 		}
 		
 		X = get_unsat_core(pico, c);
-		print_unsat_core(X);
+// 		print_unsat_core(X);
 // 		print_array("Unsat core", X);
 		// TODO: possibly minimise the unsat core here, but not necessary
 		
