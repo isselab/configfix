@@ -1097,14 +1097,14 @@ ConflictsView::ConflictsView(QWidget* parent, const char *name)
 	solutionTable->setColumnCount(2);
 	solutionTable->setHorizontalHeaderLabels(QStringList()  << "Symbol" << "New Value");
 
-	applyFixButton = new QPushButton("Apply Selected solution");
-	connect(applyFixButton, SIGNAL(clicked(bool)), SLOT(applyFixButtonClick()));
+	// applyFixButton = new QPushButton("Apply Selected solution");
+	// connect(applyFixButton, SIGNAL(clicked(bool)), SLOT(applyFixButtonClick()));
 
 	numSolutionLabel = new QLabel("Solutions:");
 	solutionLayout->addWidget(numSolutionLabel);
 	solutionLayout->addWidget(solutionSelector);
 	solutionLayout->addWidget(solutionTable);
-	solutionLayout->addWidget(applyFixButton);
+	// solutionLayout->addWidget(applyFixButton);
 
 	horizontalLayout->addLayout(solutionLayout);
 
@@ -1282,6 +1282,14 @@ void ConflictsView::calculateFixes(void)
 	//get the symbols from  grid:
 	if(conflictsTable->rowCount() == 0)
 		return;
+
+	numSolutionLabel->setText(QString("Solutions: "));
+	solutionSelector->clear();
+	solutionTable->setRowCount(0);
+	solutionTable->repaint();
+	solutionSelector->repaint();
+	numSolutionLabel->repaint();
+
 
 	GArray* wanted_symbols = g_array_sized_new(FALSE,TRUE,sizeof(struct symbol_dvalue *),conflictsTable->rowCount());
 	//loop through the rows in conflicts table adding each row into the array:
@@ -1622,6 +1630,8 @@ ConfigSearchWindow::ConfigSearchWindow(ConfigMainWindow* parent, const char *nam
 		info, SLOT(setInfo(struct menu *)));
 	connect(list->list, SIGNAL(menuChanged(struct menu *)),
 		parent, SLOT(setMenuLink(struct menu *)));
+	connect(list->list, SIGNAL(menuChanged(struct menu *)),
+		parent, SLOT(conflictSelected(struct menu *)));
 
 	layout1->addWidget(split);
 
