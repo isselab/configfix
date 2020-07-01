@@ -45,15 +45,16 @@ static long long sym_get_range_val(struct symbol *sym, int base);
 
 static void debug_info(void)
 {
-	unsigned int i;
-	struct symbol *sym;
-	for_all_symbols(i, sym) {
-		if (sym->name && strcmp(sym->name, "MTRR_SANITIZER_SPARE_REG_NR_DEFAULT") == 0) {
-			printf("PRINTING MTRR_SANITIZER_SPARE_REG_NR_DEFAULT\n");
-			print_symbol(sym);
-			print_sym_constraint(sym);
-		}
-	}
+// 	unsigned int i;
+// 	int no = 0, dep = 0;
+// 	struct symbol *sym;
+// 	for_all_symbols(i, sym) {
+// 		if (sym->name && strcmp(sym->name, "MAX_STACK_SIZE_MB") == 0) {
+// 			printf("PRINTING NR_QUICK\n");
+// 			print_symbol(sym);
+// 			print_sym_constraint(sym);
+// 		}
+// 	}
 }
 
 /*
@@ -75,16 +76,7 @@ void get_constraints(void)
 	for_all_symbols(i, sym) {
 		
 		if (!sym_is_boolean(sym)) continue;
-		
-		
-// 		if (sym->name && strcmp(sym->name, "FIRMWARE_MEMMAP") == 0) {
-// 			printf("PRINTING CRAMFS_MTD\n");
-// 			print_symbol(sym);
-// 			print_sym_constraint(sym);
-// 		} else {
-// 			continue;
-// 		}
-		
+
 
 		/* build tristate constraints */
 		if (sym->type == S_TRISTATE)
@@ -164,7 +156,7 @@ void get_constraints(void)
 		sym_add_constraint(sym, c1);
 		
 		/* only continue for tristates */
-			if (sym->type == S_BOOLEAN) continue;
+		if (sym->type == S_BOOLEAN) continue;
         
 		struct fexpr *sel_m = implies(sym->fexpr_sel_m, fexpr_or(sym->fexpr_m, sym->fexpr_y));
 		sym_add_constraint(sym, sel_m);
@@ -174,7 +166,10 @@ void get_constraints(void)
 		sym_add_constraint(sym, c2);
 	}
 	
-	/* build constraints for non-booleans */
+	/* 
+	 * build constraints for non-booleans
+	 * these constraints might add "known values"
+	 */
 	for_all_symbols(i, sym) {
 		
 		if (!sym_is_nonboolean(sym)) continue;
@@ -183,22 +178,14 @@ void get_constraints(void)
 		if (sym->type == S_HEX || sym->type == S_INT)
 			sym_add_nonbool_values_from_ranges(sym);
 		
-		/* build the range constraints for int/hex */
-		if (sym->type == S_HEX || sym->type == S_INT)
-			sym_add_range_constraints(sym);
-		
-		/* build constraints for dependencies for non-booleans */
-// 		if (sym->dir_dep.expr)
-// 			add_dependencies_nonbool(sym);
-		
 		/* build invisible constraints */
 // 		struct property *prompt = sym_get_prompt(sym);
 // 		if (prompt != NULL && prompt->visible.expr)
 // 			add_invisible_constraints(sym, prompt);
 
 		/* the symbol must have a value, if there is a prompt */
-// 		if (sym_has_prompt(sym))
-// 			sym_add_nonbool_prompt_constraint(sym);
+		if (sym_has_prompt(sym))
+			sym_add_nonbool_prompt_constraint(sym);
 		
 		/* add current value to possible values */
 		if (!sym->flags || !(sym->flags & SYMBOL_VALID))
@@ -206,14 +193,29 @@ void get_constraints(void)
 		const char *curr = sym_get_string_value(sym);
 		if (strcmp(curr, "") != 0)
 			sym_create_nonbool_fexpr(sym, (char *) curr);
+	}
+	
+	/* 
+	 * build constraints for non-booleans, part deux
+	 * the following constraints will not add any "known values"
+	 */
+	for_all_symbols(i, sym) {
+		
+		if (!sym_is_nonboolean(sym)) continue;
+		
+		/* build the range constraints for int/hex */
+		if (sym->type == S_HEX || sym->type == S_INT)
+			sym_add_range_constraints(sym);
+		
+		/* build constraints for dependencies for non-booleans */
+		if (sym->dir_dep.expr)
+			add_dependencies_nonbool(sym);
 		
 		/* exactly one of the symbols must be true */
 		sym_nonbool_at_least_1(sym);
 		sym_nonbool_at_most_1(sym);
-		
 	}
 
-	
 // 	printf("done.\n");
 }
 
@@ -450,6 +452,9 @@ static void add_dependencies_nonbool(struct symbol *sym)
 	
 	struct fexpr *dep_both = calculate_fexpr_both(ke_dirdep);
 	struct fexpr *sel_both = sym->rev_dep.expr ? calculate_fexpr_both(ke_revdep) : const_false;
+	
+// 	if (dep_both == const_false)
+// 		return;
 	
 	// TODO check
 	if (sel_both != const_false)

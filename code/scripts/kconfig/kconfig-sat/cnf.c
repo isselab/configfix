@@ -127,7 +127,7 @@ static void unfold_cnf_clause(struct fexpr *e)
 	assert(fexpr_is_cnf(e));
 	
 // 	struct gstr empty_string = str_new();
-	struct cnf_clause *cl;// = build_cnf_clause(&empty_string, 0);
+	struct cnf_clause *cl = NULL;// = build_cnf_clause(&empty_string, 0);
 	
 	unfold_cnf_clause_util(cl, e);
 	

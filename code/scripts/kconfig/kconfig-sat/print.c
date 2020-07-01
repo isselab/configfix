@@ -308,6 +308,8 @@ static void print_fexpr_util(struct fexpr *e, int parent)
 	switch (e->type) {
 	case FE_SYMBOL:
 	case FE_CHOICE:
+	case FE_SELECT:
+	case FE_NONBOOL:
 	case FE_TMPSATVAR:
 		printf("%s", str_get(&e->name));
 		break;
@@ -341,9 +343,6 @@ static void print_fexpr_util(struct fexpr *e, int parent)
 		break;
 	case FE_TRUE:
 		printf("1");
-		break;
-	case FE_NONBOOL:
-		printf("%s", str_get(&e->name));
 		break;
 	}
 }
@@ -442,6 +441,7 @@ void fexpr_as_char(struct fexpr *e, struct gstr *s, int parent)
 	switch (e->type) {
 	case FE_SYMBOL:
 	case FE_CHOICE:
+	case FE_SELECT:
 	case FE_NONBOOL:
 		str_append(s, "definedEx(");
 		str_append(s, str_get(&e->name));
@@ -655,6 +655,8 @@ void write_cnf_to_file(GArray *cnf_clauses, int sat_variable_nr, int nr_of_claus
  */
 void write_constraints_to_file(void)
 {
+	printf("Writing constraints to file...");
+	
 	FILE *fd = fopen(OUTFILE_FEXPR, "w");
 	unsigned int i, j;
 	struct symbol *sym;
@@ -671,4 +673,6 @@ void write_constraints_to_file(void)
 		}
 	}
 	fclose(fd);
+	
+	printf("done.\n");
 }

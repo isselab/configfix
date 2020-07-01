@@ -256,6 +256,7 @@ GArray * run_satconf(GArray *arr)
 	start = clock();
 	
 	int res = picosat_sat(pico, -1);
+// 	int res = PICOSAT_UNSATISFIABLE;
 	
 	end = clock();
 	time = ((double) (end - start)) / CLOCKS_PER_SEC;
@@ -266,7 +267,8 @@ GArray * run_satconf(GArray *arr)
 		
 		GArray *ret = g_array_new(false, false, sizeof(GArray *));
 // 		GArray *ret = rangefix_init(pico);
-		free(pico);
+		picosat_reset(pico);
+// 		free(pico);
 		return ret;
 		
 	} else if (res == PICOSAT_UNSATISFIABLE) {
@@ -274,16 +276,20 @@ GArray * run_satconf(GArray *arr)
 		printf("\n");
 		
 		GArray *ret = rangefix_init(pico);
-		free(pico);
+// 		free(pico);
+		picosat_reset(pico);
+// 		free(pico);
 		return ret;
 	}
 	else {
 		printf("Unknown if satisfiable.\n");
-		free(pico);
+		picosat_reset(pico);
+// 		free(pico);
 		return NULL;
 	}
 	
-	free(pico);
+	picosat_reset(pico);
+// 	free(pico);
 	return NULL;
 }
 
