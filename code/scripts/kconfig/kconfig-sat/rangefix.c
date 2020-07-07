@@ -15,6 +15,7 @@
 #define PRINT_DIAGNOSES false
 #define PRINT_DIAGNOSIS_FOUND true
 #define MINIMISE_DIAGNOSES false
+#define MINIMISE_UNSAT_CORE true
 #define MAX_DIAGNOSES 5
 #define MAX_SECONDS 30
 
@@ -26,6 +27,7 @@ static void add_fexpr_to_constraint_set(GArray *C);
 static void set_assumptions(PicoSAT *pico, GArray *c);
 static void fexpr_add_assumption(PicoSAT *pico, struct fexpr *e);
 static GArray * get_unsat_core(PicoSAT *pico, GArray *c);
+static GArray * minimise_unsat_core(PicoSAT *pico, GArray *C);
 
 static GArray * get_difference(GArray *C, GArray *E0);
 static bool has_intersection(GArray *e, GArray *X);
@@ -167,11 +169,15 @@ static GArray * generate_diagnoses(PicoSAT *pico)
 		if (time_t > (double) MAX_SECONDS)
 			goto DIAGNOSES_FOUND;
 		
+		/* get unsat core from SAT solver */
 		X = get_unsat_core(pico, c);
+		
+		/* minimise the unsat core */
+		if (MINIMISE_UNSAT_CORE)
+			X = minimise_unsat_core(pico, X);
+		
 		if (PRINT_UNSAT_CORE)
 			print_unsat_core(X);
-// 		print_array("Unsat core", X);
-		// TODO: possibly minimise the unsat core here, but not necessary
 		
 		for (i = 0; i < E->len; i++) {
 			/* get partial diagnosis */
@@ -409,6 +415,43 @@ static GArray * get_unsat_core(PicoSAT *pico, GArray *c)
 	}
 	
 	return ret;
+}
+
+/*
+ * minimise the unsat core C
+ */
+static GArray * minimise_unsat_core(PicoSAT *pico, GArray *C)
+{
+	/* no need to check further */
+	if (C->len == 1) return C;
+	
+	GArray * c_set;
+	unsigned int i;
+	struct fexpr * c;
+	
+	for (i = 0; i < C->len; i++) {
+		c = g_array_index(C, struct fexpr *, i);
+		
+		/* create C\c */
+		c_set = g_array_new(false, false, sizeof(struct fexpr *));
+		g_array_append_val(c_set, c);
+		GArray *t = get_difference(C, c_set);
+		
+		/* invoke PicoSAT */
+		set_assumptions(pico, t);
+		
+		int res = picosat_sat(pico, -1);
+		
+		if (res == PICOSAT_UNSATISFIABLE) {
+			g_array_remove_index(C, i);
+			i--;
+		}
+		
+		g_array_free(c_set, false);
+		g_array_free(t, false);
+	}
+	
+	return C;
 }
 
 /*
