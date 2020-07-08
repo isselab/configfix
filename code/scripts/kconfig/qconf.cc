@@ -2280,10 +2280,73 @@ int main(int ac, char** av)
 	//zconfdump(stdout);
 	configApp->connect(configApp, SIGNAL(lastWindowClosed()), SLOT(quit()));
 	configApp->connect(configApp, SIGNAL(aboutToQuit()), v, SLOT(saveSettings()));
+#ifdef CONFIGFIX_TEST
+	printf("Kconfig file: %s\n",name);
+	
+	if (rootmenu.prompt)
+		printf("Root menu prompt: %s\n",rootmenu.prompt->text);
+	
+	// show detailed information in config view by default
+	v->showFullView(); 
+	ConfigView *configView = v->getConfigView();
+	configView->setShowName(true);
+	configView->setShowRange(true);
+	configView->setShowData(true);
+	// show prompt options
+	configView->setOptionMode(configView->showPromptAction);
+	configView->showPromptAction->setChecked(true);
+	// auto-resize columns in conflicts view 
+	ConflictsView *conflictsView = v->getConflictsView();
+	conflictsView->conflictsTable->resizeColumnsToContents();
+
+	// iterate menus
+	QTreeWidgetItemIterator it(configView->list);
+	ConfigItem* item;
+	struct symbol* sym;
+
+	// collect menu and symbol statistics
+	int total=0, menuless=0, invisible=0, 
+		symbolless=0, nonchangeable=0, promptless=0;
+	while (*it) {
+		item = (ConfigItem*)(*it);
+		total++;
+		if (!item->menu) {
+			menuless++;
+			++it;
+			continue;
+		}
+		if (!menu_is_visible(item->menu))
+			invisible++;
+		
+		sym = item->menu->sym;
+		if (!sym) {
+			symbolless++;
+			++it;
+			continue;
+		}
+		if (!sym_is_changeable(sym))
+			nonchangeable++;
+		
+		if (!sym_has_prompt(sym))
+			promptless++;
+
+		if (sym_has_prompt(sym) && !sym_is_changeable(sym))
+			conflictsView->candidate_symbols++;
+
+		++it;
+	}
+	printf("%i ConfigItems: %i menu-less, %i symbol-less, %i invisible, %i non-changeable, %i prompt-less\n", 
+		total, menuless, symbolless, invisible, nonchangeable, promptless);
+	printf("%i conflict candidates\n", conflictsView->candidate_symbols);
+#endif
 	v->show();
 	configApp->exec();
 
 	configSettings->endGroup();
+#ifdef CONFIGFIX_TEST
+	delete conflictsView;
+	delete configView;
+#endif
 	delete configSettings;
 	delete v;
 	delete configApp;

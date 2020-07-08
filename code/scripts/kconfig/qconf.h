@@ -246,6 +246,7 @@ public:
 	static QAction *showPromptAction;
 	static QAction *addSymbolsFromContextMenu;
 };
+
 class ConflictsView : public QWidget {
 	ConfigLineEdit* lineEdit;
 	Q_OBJECT
@@ -307,6 +308,12 @@ public:
 	//currently selected config items in configlist.
 	QList<QTreeWidgetItem*> currentSelection;
 
+#ifdef CONFIGFIX_TEST
+	// pointer to menu list
+	ConfigList* configList;
+	// counter of conflict candidates: have prompt + cannot be changed
+	int candidate_symbols;
+#endif
 
 };
 
@@ -369,6 +376,15 @@ class ConfigMainWindow : public QMainWindow {
 	static void conf_changed(void);
 public:
 	ConfigMainWindow(void);
+#ifdef CONFIGFIX_TEST
+	ConfigView* getConfigView(void) const { 
+		return configView; 
+	}
+	ConflictsView* getConflictsView(void) const {
+		return conflictsView;
+	}
+#endif
+
 public slots:
 	void changeMenu(struct menu *);
 	void setMenuLink(struct menu *);
