@@ -184,8 +184,6 @@ $(foreach f, mconf.o $(lxdialog), \
 $(obj)/mconf.o: $(obj)/mconf-cfg
 $(addprefix $(obj)/lxdialog/, $(lxdialog)): $(obj)/mconf-cfg
 
-# qconf: Used for the xconfig target based on Qt
-
 ### satconfig ###
 hostprogs-y	+= satconfig satdvconfig
 satconf-objs	:= kconfig-sat/cnf.o kconfig-sat/constraints.o kconfig-sat/fexpr.o kconfig-sat/picosat.o kconfig-sat/print.o kconfig-sat/rangefix.o kconfig-sat/satconf.o kconfig-sat/satutils.o kconfig-sat/symbol_mod.o kconfig-sat/utils.o
@@ -210,6 +208,7 @@ HOSTCFLAGS_symbol_mod.o	= $(shell pkg-config --cflags glib-2.0)
 HOSTCFLAGS_utils.o	= $(shell pkg-config --cflags glib-2.0)
 ### satconfig end ###
 
+# qconf: Used for the xconfig target based on Qt
 hostprogs-y	+= qconf
 qconf-cxxobjs	:= qconf.o conflict_resolver.o
 qconf-objs	:= images.o $(common-objs) kconfig-sat/cnf.o kconfig-sat/constraints.o kconfig-sat/fexpr.o kconfig-sat/picosat.o kconfig-sat/print.o kconfig-sat/rangefix.o kconfig-sat/satconf.o kconfig-sat/satutils.o kconfig-sat/symbol_mod.o kconfig-sat/utils.o
