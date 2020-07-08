@@ -215,7 +215,7 @@ qconf-objs	:= images.o $(common-objs) kconfig-sat/cnf.o kconfig-sat/constraints.
 
 HOSTLDLIBS_qconf	= $(shell . $(obj)/qconf-cfg && echo $$libs && pkg-config --libs glib-2.0)
 HOSTLDLIBS_conflict_resolver	= $(shell . $(obj)/qconf-cfg && echo $$libs)
-HOSTCXXFLAGS_qconf.o	= $(shell . $(obj)/qconf-cfg && echo $$cflags && pkg-config --cflags glib-2.0)
+HOSTCXXFLAGS_qconf.o	= -D CONFIGFIX_TEST $(shell . $(obj)/qconf-cfg && echo $$cflags && pkg-config --cflags glib-2.0)
 HOSTCXXFLAGS_conflict_resolver.o	= $(shell . $(obj)/qconf-cfg && echo $$cflags)
 
 $(obj)/qconf.o: $(obj)/qconf-cfg $(obj)/qconf.moc
