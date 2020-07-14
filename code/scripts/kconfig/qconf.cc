@@ -1199,10 +1199,11 @@ void ConflictsView::addSymbol(struct menu *m)
 
 				std::cerr << "Adding " << sym->name << " to list " << std::endl;
 
-			}else{
+			} else {
 				// std::cerr << "we have the symbol already at index " << unsigned(addedSymbolList[sym->name]-1 )<< std::endl;
 				conflictsTable->item(matches[0].row(),2)->setText(tristate_value_to_string(currentval));
 			}
+			conflictsTable->resizeColumnsToContents();
 		}
 	}
 }
