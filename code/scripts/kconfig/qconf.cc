@@ -47,11 +47,13 @@
 
 #include "qconf.moc"
 #include "images.h"
-#include <iostream>
 
+#include <iostream>
 #include "conflict_resolver.h"
 #include <QAbstractItemView>
 #include <QMimeData>
+
+
 static QApplication *configApp;
 static ConfigSettings *configSettings;
 
@@ -1330,6 +1332,7 @@ void ConflictsView::calculateFixes(void)
 #ifdef CONFIGFIX_TEST
 	end = clock();
 	time = ((double) (end - start)) / CLOCKS_PER_SEC;
+	printf("Conflict resolution time = %.6f secs.\n", time);
 #endif
 	free(p);
 	g_array_free (wanted_symbols,FALSE);
