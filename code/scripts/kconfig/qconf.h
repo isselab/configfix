@@ -270,16 +270,19 @@ public slots:
 	void changeToModule();
 	void selectionChanged(QList<QTreeWidgetItem*> selection);
 
-
 	void applyFixButtonClick();
 
+	// switches the solution table with selected solution index from solution_output
+	void changeSolutionTable(int solution_number);
 
+	// calls satconfig to solve to get wanted value to current value
+	void calculateFixes();
 
-  // switches the solution table with selected solution index from  solution_output
-  void changeSolutionTable(int solution_number);
+// FIXME - make work with #ifdef
+//#ifdef CONFIGFIX_TEST
+	void testRandomConlict();
+//#endif
 
-  // calls satconfig to solve to get wanted value to current value
-  void calculateFixes();
 signals:
 	void showNameChanged(bool);
 	void showRangeChanged(bool);
@@ -290,17 +293,17 @@ public:
 	QTableWidget* conflictsTable;
 	QList<Constraint> constraints;
 
-  // the comobox on the right hand side. used to select a solutio after
-  // getting solution from satconfig
-  QComboBox* solutionSelector{nullptr};
+	// the comobox on the right hand side. used to select a solutio after
+	// getting solution from satconfig
+	QComboBox* solutionSelector{nullptr};
 
-  // the table which shows the selected solution showing variable = New value changes
+	// the table which shows the selected solution showing variable = New value changes
 	QTableWidget* solutionTable{nullptr};
 
-  // Apply fixes button on the solution view
+	// Apply fixes button on the solution view
 	QPushButton* applyFixButton{nullptr};
 
-  GArray* solution_output{nullptr};
+	GArray* solution_output{nullptr};
 
 	QToolBar *conflictsToolBar;
 	struct menu * currentSelectedMenu ;
@@ -378,7 +381,7 @@ public:
 	ConfigMainWindow(void);
 #ifdef CONFIGFIX_TEST
 	ConfigView* getConfigView(void) const { 
-		return configView; 
+		return configView;
 	}
 	ConflictsView* getConflictsView(void) const {
 		return conflictsView;

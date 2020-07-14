@@ -20,6 +20,10 @@
 #include <glib.h>
 #include "lkc.h"
 #include "kconfig-sat/satconf.h"
+#ifdef CONFIGFIX_TEST
+#include <time.h>
+#include "kconfig-sat/utils.h"
+#endif
 
 #include <qapplication.h>
 #include <qdesktopwidget.h>
@@ -1048,6 +1052,9 @@ ConflictsView::ConflictsView(QWidget* parent, const char *name)
 	QAction *setConfigSymbolAsYes = new QAction("Y");
 	QAction *fixConflictsAction = new QAction("Calculate Fixes");
 	QAction *removeSymbol = new QAction("Remove Symbol");
+#ifdef CONFIGFIX_TEST
+	QAction *testConflictAction = new QAction("Test Random Conflict");
+#endif
 
 	//if you change the order of buttons here, change the code where
 	//module button was disabled if symbol is boolean, selecting module button
@@ -1059,7 +1066,9 @@ ConflictsView::ConflictsView(QWidget* parent, const char *name)
 	conflictsToolBar->addAction(setConfigSymbolAsYes);
 	conflictsToolBar->addAction(fixConflictsAction);
 	conflictsToolBar->addAction(removeSymbol);
-
+#ifdef CONFIGFIX_TEST
+	conflictsToolBar->addAction(testConflictAction);
+#endif
 	verticalLayout->addWidget(conflictsToolBar);
 
 	connect(addSymbol, SIGNAL(triggered(bool)), SLOT(addSymbol()));
@@ -1070,7 +1079,9 @@ ConflictsView::ConflictsView(QWidget* parent, const char *name)
 	//connect clicking 'calculate fixes' to 'change all symbol values to fix all conflicts'
 	// no longer used anymore for now.
 	connect(fixConflictsAction, SIGNAL(triggered(bool)), SLOT(calculateFixes()));
-
+#ifdef CONFIGFIX_TEST
+	connect(testConflictAction, SIGNAL(triggered(bool)), SLOT(testRandomConlict()));
+#endif
 	conflictsTable = (QTableWidget*) new dropAbleView(this);
 	conflictsTable->setRowCount(0);
 	conflictsTable->setColumnCount(3);
@@ -1274,7 +1285,9 @@ void ConflictsView::changeSolutionTable(int solution_number){
 		}
 		std::cout << "Adding " << cur_symbol->sym->name << " to list " << std::endl;
 	}
+	solutionTable->resizeColumnsToContents();
 }
+
 void ConflictsView::calculateFixes(void)
 {
 	std::cout << "calculating fixes" << std::endl;
@@ -1308,7 +1321,16 @@ void ConflictsView::calculateFixes(void)
 		tmp->tri = string_value_to_tristate(conflictsTable->item(i,1)->text());
 		g_array_append_val(wanted_symbols,tmp);
 	}
+#ifdef CONFIGFIX_TEST
+	clock_t start, end;
+	double time = 0.0;
+	start = clock();
+#endif
 	solution_output = run_satconf(wanted_symbols);
+#ifdef CONFIGFIX_TEST
+	end = clock();
+	time = ((double) (end - start)) / CLOCKS_PER_SEC;
+#endif
 	free(p);
 	g_array_free (wanted_symbols,FALSE);
 	if (solution_output == nullptr || solution_output->len == 0)
@@ -1324,13 +1346,8 @@ void ConflictsView::calculateFixes(void)
 	// populate the solution table from the first solution gotten
 	numSolutionLabel->setText(QString("Solutions: (%1) found").arg(solution_output->len));
 	changeSolutionTable(0);
-
-
-
-
-
-
 }
+
 void ConflictsView::changeAll(void)
 {
 	return;
@@ -1359,6 +1376,70 @@ void ConflictsView::changeAll(void)
 
 	// emit(refreshMenu());
 }
+
+#ifdef CONFIGFIX_TEST
+void ConflictsView::testRandomConlict(void)
+{
+	conflictsTable->clearContents();
+
+	// iterate menu items
+	QTreeWidgetItemIterator it(configList);
+	ConfigItem* item;
+	struct symbol* sym;
+
+	// random seed
+	srand(time(0));
+
+	int conflict_size = 2;
+	int conflict_count = 0;
+
+	while (*it) {
+		item = (ConfigItem*)(*it);
+		// skip items without menus or symbols
+		if (!item->menu) {
+			++it;
+			continue;
+		}
+		sym = item->menu->sym;
+		if (!sym) {
+			++it;
+			continue;
+		}
+
+		// consider only conflicting items
+		if (sym_has_prompt(sym) && !sym_is_changeable(sym)) {
+
+			// FIXME - "prefectly random selection"
+			if (rand() < 1000000) {
+				addSymbol(item->menu);
+				// set wanted value (reverse of current)
+				tristate current = sym_get_tristate_value(sym);
+				tristate wanted = current == yes ? no : yes;
+				conflictsTable->setItem(conflictsTable->rowCount()-1,1,
+					new QTableWidgetItem(tristate_value_to_string(wanted)));
+				++conflict_count;
+			}
+		}
+
+		if (conflictsTable->rowCount() == conflict_size)
+			break;
+		else
+			++it;
+	}
+
+	conflictsTable->resizeColumnsToContents();
+	conflictsTable->repaint();
+
+	if (conflictsTable->rowCount() == 0) {
+		printf("No conflicts\n");
+		return;	
+	} else {
+		printf("Conflict includes %i symbols\n", conflictsTable->rowCount());
+	}
+
+	calculateFixes();
+}
+#endif
 
 ConflictsView::~ConflictsView(void)
 {
@@ -1744,6 +1825,9 @@ ConfigMainWindow::ConfigMainWindow(void)
 	setTabOrder(configList, helpText);
 
 	configList->setFocus();
+#ifdef CONFIGFIX_TEST
+	conflictsView->configList = configList;
+#endif
 
 	menu = menuBar();
 	toolBar = new QToolBar("Tools", this);
