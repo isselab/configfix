@@ -436,3 +436,5 @@ public:
 protected:
     void dropEvent(QDropEvent *event);
 };
+
+GHashTable* backup_config(void);

@@ -1263,7 +1263,7 @@ void ConflictsView::cellClicked(int row, int column)
 	emit(conflictSelected(men));
 }
 void ConflictsView::changeSolutionTable(int solution_number){
-	if(solution_output == nullptr || solution_number < 0){
+	if (solution_output == nullptr || solution_number < 0){
 		return;
 	}
 	GArray* selected_solution = g_array_index(solution_output,GArray * , solution_number);
@@ -1384,65 +1384,113 @@ void ConflictsView::changeAll(void)
 #ifdef CONFIGFIX_TEST
 void ConflictsView::testRandomConlict(void)
 {
-	conflictsTable->clearContents();
+	// conflictsTable->clearContents();
 
-	// iterate menu items
-	QTreeWidgetItemIterator it(configList);
-	ConfigItem* item;
-	struct symbol* sym;
+	// // iterate menu items
+	// QTreeWidgetItemIterator it(configList);
+	// ConfigItem* item;
+	// struct symbol* sym;
 
-	// random seed
-	srand(time(0));
+	// // random seed
+	// srand(time(0));
 
-	int conflict_size = 2;
-	int conflict_count = 0;
+	// int conflict_size = 2;
+	// int conflict_count = 0;
 
-	while (*it) {
-		item = (ConfigItem*)(*it);
-		// skip items without menus or symbols
-		if (!item->menu) {
-			++it;
-			continue;
-		}
-		sym = item->menu->sym;
-		if (!sym) {
-			++it;
-			continue;
-		}
+	// while (*it) {
+	// 	item = (ConfigItem*)(*it);
+	// 	// skip items without menus or symbols
+	// 	if (!item->menu) {
+	// 		++it;
+	// 		continue;
+	// 	}
+	// 	sym = item->menu->sym;
+	// 	if (!sym) {
+	// 		++it;
+	// 		continue;
+	// 	}
 
-		// consider only conflicting items
-		if (sym_has_prompt(sym) && !sym_is_changeable(sym)) {
+	// 	// consider only conflicting items
+	// 	if (sym_has_prompt(sym) && !sym_is_changeable(sym)) {
 
-			// FIXME - "prefectly random selection"
-			if (rand() < 1000000) {
-				addSymbol(item->menu);
-				// set wanted value (reverse of current)
-				tristate current = sym_get_tristate_value(sym);
-				tristate wanted = current == yes ? no : yes;
-				conflictsTable->setItem(conflictsTable->rowCount()-1,1,
-					new QTableWidgetItem(tristate_value_to_string(wanted)));
-				++conflict_count;
-			}
-		}
+	// 		// FIXME - "prefectly random selection"
+	// 		if (rand() < 1000000) {
+	// 			addSymbol(item->menu);
+	// 			// set wanted value (reverse of current)
+	// 			tristate current = sym_get_tristate_value(sym);
+	// 			tristate wanted = current == yes ? no : yes;
+	// 			conflictsTable->setItem(conflictsTable->rowCount()-1,1,
+	// 				new QTableWidgetItem(tristate_value_to_string(wanted)));
+	// 			++conflict_count;
+	// 		}
+	// 	}
 
-		if (conflictsTable->rowCount() == conflict_size)
-			break;
-		else
-			++it;
+	// 	if (conflictsTable->rowCount() == conflict_size)
+	// 		break;
+	// 	else
+	// 		++it;
+	// }
+
+	// conflictsTable->resizeColumnsToContents();
+	// conflictsTable->repaint();
+
+	// if (conflictsTable->rowCount() == 0) {
+	// 	printf("No conflicts\n");
+	// 	return;	
+	// } else {
+	// 	printf("Conflict includes %i symbols\n", conflictsTable->rowCount());
+	// }
+
+	// calculateFixes();
+	// verify fixes
+	if (solution_output != nullptr && solution_output->len > 0) {
+
+		GHashTable *initial_config, *after_fix;
+
+		// backup current configuration
+		printf("Backing up current configuration...\n");
+		initial_config = backup_config(); 
+		printf("Done\n");
+
+		// apply the fix
+		GArray *fix = g_array_index(solution_output, GArray*, 0);
+		apply_satfix(fix);
+
+		// save and reload configuration
+		conf_write(".config_fix");
+
+		// check that only symbols in the fix were changed 
 	}
-
-	conflictsTable->resizeColumnsToContents();
-	conflictsTable->repaint();
-
-	if (conflictsTable->rowCount() == 0) {
-		printf("No conflicts\n");
-		return;	
-	} else {
-		printf("Conflict includes %i symbols\n", conflictsTable->rowCount());
-	}
-
-	calculateFixes();
 }
+
+/*
+ * Save the current configuration (symbol values) into hash table, 
+ * where keys are symbol names, and values are symbol values.
+ */
+GHashTable* backup_config() {
+	
+	GHashTable *backup = g_hash_table_new_full(
+			g_str_hash,
+			g_str_equal,
+			NULL,
+			free
+  	);
+
+	int i = 0;
+	struct symbol *sym;
+	for_all_symbols(i, sym) {
+
+		if (sym_get_type(sym) == S_UNKNOWN) continue;
+
+		if (g_hash_table_lookup(backup, sym_get_name(sym)) != NULL)
+			printf("\tDuplicate key: %s\n", sym_get_name(sym));
+
+		g_hash_table_insert(backup, strdup(sym_get_name(sym)), strdup(sym_get_string_value(sym)));
+	}
+
+	return backup;
+}
+
 #endif
 
 ConflictsView::~ConflictsView(void)
@@ -2393,7 +2441,7 @@ int main(int ac, char** av)
 	struct symbol* sym;
 
 	// collect menu and symbol statistics
-	int total=0, menuless=0, invisible=0, 
+	int total=0, menuless=0, invisible=0, unknowns=0,
 		symbolless=0, nonchangeable=0, promptless=0;
 	while (*it) {
 		item = (ConfigItem*)(*it);
@@ -2412,6 +2460,10 @@ int main(int ac, char** av)
 			++it;
 			continue;
 		}
+
+		if (sym_get_type(sym) == S_UNKNOWN)
+			unknowns++;
+
 		if (!sym_is_changeable(sym))
 			nonchangeable++;
 		
@@ -2423,8 +2475,8 @@ int main(int ac, char** av)
 
 		++it;
 	}
-	printf("%i ConfigItems: %i menu-less, %i symbol-less, %i invisible, %i non-changeable, %i prompt-less\n", 
-		total, menuless, symbolless, invisible, nonchangeable, promptless);
+	printf("%i ConfigItems: %i menu-less, %i symbol-less, %i unknown type, %i invisible, %i non-changeable, %i prompt-less\n", 
+		total, menuless, symbolless, unknowns, invisible, nonchangeable, promptless);
 	printf("%i conflict candidates\n", conflictsView->candidate_symbols);
 #endif
 	v->show();
