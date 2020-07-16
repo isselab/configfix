@@ -2475,9 +2475,23 @@ int main(int ac, char** av)
 
 		++it;
 	}
+
+	// alternative conflict candidates count by iterating symbols
+	int i, candidates=0, sym_count=0, promptless_unchangeables=0;
+	for_all_symbols(i, sym) {
+		sym_count++;
+		if (!sym_is_changeable(sym) && sym_has_prompt(sym))
+			candidates++;
+		if (!sym_is_changeable(sym) && !sym_has_prompt(sym))
+			promptless_unchangeables++;
+	}
+
 	printf("%i ConfigItems: %i menu-less, %i symbol-less, %i unknown type, %i invisible, %i non-changeable, %i prompt-less\n", 
 		total, menuless, symbolless, unknowns, invisible, nonchangeable, promptless);
-	printf("%i conflict candidates\n", conflictsView->candidate_symbols);
+	printf("%i symbols: %i prompt-less & unchangeable \n", 
+		sym_count, promptless_unchangeables);
+	printf("Conflict candidates: %i config items (%i symbols)\n", 
+		conflictsView->candidate_symbols, candidates);
 #endif
 	v->show();
 	configApp->exec();
