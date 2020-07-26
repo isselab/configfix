@@ -80,6 +80,7 @@ signals:
 	void parentSelected(void);
 	void gotFocus(struct menu *);
 	void selectionChanged(QList<QTreeWidgetItem*> selection);
+	void UpdateConflictsViewColorization();
 
 public:
 	void updateListAll(void)
@@ -254,6 +255,7 @@ public:
 	ConflictsView(QWidget* parent, const char *name = 0);
 	~ConflictsView(void);
 	void addSymbol(struct menu * m);
+	int current_solution_number = -1;
 
 public slots:
     void cellClicked(int, int);
@@ -271,6 +273,7 @@ public slots:
 
 
 	void applyFixButtonClick();
+	void UpdateConflictsViewColorization();
 
 
 
@@ -306,6 +309,9 @@ public:
 	QLabel* numSolutionLabel{nullptr};
 	//currently selected config items in configlist.
 	QList<QTreeWidgetItem*> currentSelection;
+
+	//colorize the symbols
+	// void ColorizeSolutionTable();
 
 
 };
@@ -349,6 +355,9 @@ public:
 public slots:
 	void saveSettings(void);
 	void search(void);
+	void UpdateConflictsViewColorizationFowarder();
+signals:
+	void UpdateConflictsViewColorization();
 
 protected:
 	QLineEdit* editField;

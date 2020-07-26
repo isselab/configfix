@@ -48,6 +48,8 @@
 #include "conflict_resolver.h"
 #include <QAbstractItemView>
 #include <QMimeData>
+#include <QBrush>
+#include <QColor>
 static QApplication *configApp;
 static ConfigSettings *configSettings;
 
@@ -532,6 +534,7 @@ void ConfigList::changeValue(ConfigItem* item)
 		}
 		if (oldexpr != newexpr)
 			parent()->updateList(item);
+			emit UpdateConflictsViewColorization();
 		break;
 	case S_INT:
 	case S_HEX:
@@ -1253,6 +1256,7 @@ void ConflictsView::changeSolutionTable(int solution_number){
 		return;
 	}
 	GArray* selected_solution = g_array_index(solution_output,GArray * , solution_number);
+	current_solution_number = solution_number;
 	std::cout << "solution length =" << unsigned(selected_solution->len) << std::endl;
 	// solutionTable->clearContents();
 	solutionTable->setRowCount(0);
@@ -1260,20 +1264,63 @@ void ConflictsView::changeSolutionTable(int solution_number){
 	{
 		solutionTable->insertRow(solutionTable->rowCount());
 		struct symbol_fix* cur_symbol = g_array_index(selected_solution,struct symbol_fix*,i);
-		solutionTable->setItem(solutionTable->rowCount()-1,0,new QTableWidgetItem(cur_symbol->sym->name));
+
+		QTableWidgetItem* symbol_name = new QTableWidgetItem(cur_symbol->sym->name);
+		auto green = QColor(0,255,0);
+		auto red = QColor(255,0,0);
+
+		// if(sym_string_within_range(cur_symbol->sym,cur_symbol->sym->name)){
+		// 	symbol_name->setForeground(QBrush(green));
+		// } else{
+		// 	symbol_name->setForeground(QBrush(red));
+		// }
+		solutionTable->setItem(solutionTable->rowCount()-1,0,symbol_name);
 
 		if (cur_symbol->type == symbolfix_type::SF_BOOLEAN){
 			std::cout << "adding boolean symbol " << std::endl;
-			solutionTable->setItem(solutionTable->rowCount()-1,1,new QTableWidgetItem(tristate_value_to_string(cur_symbol->tri)));
+			QTableWidgetItem* symbol_value = new QTableWidgetItem(tristate_value_to_string(cur_symbol->tri));
+			symbol_name->setForeground( sym_string_within_range(cur_symbol->sym, tristate_value_to_string(cur_symbol->tri).toStdString().c_str())? green : red);
+			solutionTable->setItem(solutionTable->rowCount()-1,1,symbol_value);
 		} else if(cur_symbol->type == symbolfix_type::SF_NONBOOLEAN){
 			std::cout << "adding non boolean symbol " << std::endl;
-			solutionTable->setItem(solutionTable->rowCount()-1,1,new QTableWidgetItem(cur_symbol->nb_val.s));
+			QTableWidgetItem* symbol_value = new QTableWidgetItem(cur_symbol->nb_val.s);
+			symbol_name->setForeground( sym_string_within_range(cur_symbol->sym, tristate_value_to_string(cur_symbol->tri).toStdString().c_str())? green : red);
+			solutionTable->setItem(solutionTable->rowCount()-1,1,symbol_value);
 		} else {
+			QTableWidgetItem* symbol_value = new QTableWidgetItem(cur_symbol->disallowed.s);
+			symbol_name->setForeground( sym_string_within_range(cur_symbol->sym, tristate_value_to_string(cur_symbol->tri).toStdString().c_str())? green : red);
 			std::cout << "adding disalllowed symbol " << std::endl;
-			solutionTable->setItem(solutionTable->rowCount()-1,1,new QTableWidgetItem(cur_symbol->disallowed.s));
+			solutionTable->setItem(solutionTable->rowCount()-1,1,symbol_value);
 		}
 		std::cout << "Adding " << cur_symbol->sym->name << " to list " << std::endl;
 	}
+}
+void ConflictsView::UpdateConflictsViewColorization(void)
+{
+	auto green = QColor(0,255,0);
+	auto red = QColor(255,0,0);
+
+	if (solutionTable->rowCount() == 0 || current_solution_number < 0)
+		return;
+
+	for (int i=0;i< solutionTable->rowCount();i++) {
+		//text from gui
+		QTableWidgetItem *symbol =  solutionTable->item(i,0);
+
+		//symbol from solution list
+		GArray* selected_solution = g_array_index(solution_output,GArray * ,current_solution_number);
+		struct symbol_fix* cur_symbol = g_array_index(selected_solution,struct symbol_fix*,i);
+
+		if (sym_string_within_range(cur_symbol->sym, tristate_value_to_string(cur_symbol->tri).toStdString().c_str()))
+		{
+			symbol->setForeground(green);
+
+		} else {
+			symbol->setForeground(red);
+		}
+
+    }
+
 }
 void ConflictsView::calculateFixes(void)
 {
@@ -1633,6 +1680,7 @@ ConfigSearchWindow::ConfigSearchWindow(ConfigMainWindow* parent, const char *nam
 	connect(list->list, SIGNAL(menuChanged(struct menu *)),
 		parent, SLOT(conflictSelected(struct menu *)));
 
+	connect(list->list,SIGNAL(UpdateConflictsViewColorization()),SLOT(UpdateConflictsViewColorizationFowarder()));
 	layout1->addWidget(split);
 
 	if (name) {
@@ -1656,6 +1704,9 @@ ConfigSearchWindow::ConfigSearchWindow(ConfigMainWindow* parent, const char *nam
 	}
 }
 
+void ConfigSearchWindow::UpdateConflictsViewColorizationFowarder(void){
+	emit UpdateConflictsViewColorization();
+}
 void ConfigSearchWindow::saveSettings(void)
 {
 	if (!objectName().isEmpty()) {
@@ -1741,6 +1792,8 @@ ConfigMainWindow::ConfigMainWindow(void)
 	*/
 	connect(conflictsView,SIGNAL(conflictSelected(struct menu *)),SLOT(conflictSelected(struct menu *)));
 	connect(conflictsView,SIGNAL(refreshMenu()),SLOT(refreshMenu()));
+	connect(menuList,SIGNAL(UpdateConflictsViewColorization()),conflictsView,SLOT(UpdateConflictsViewColorization()));
+	connect(configList,SIGNAL(UpdateConflictsViewColorization()),conflictsView,SLOT(UpdateConflictsViewColorization()));
 	setTabOrder(configList, helpText);
 
 	configList->setFocus();
@@ -1962,8 +2015,10 @@ void ConfigMainWindow::saveConfigAs(void)
 
 void ConfigMainWindow::searchConfig(void)
 {
-	if (!searchWindow)
+	if (!searchWindow){
 		searchWindow = new ConfigSearchWindow(this, "search");
+		connect(searchWindow,SIGNAL(UpdateConflictsViewColorization()),conflictsView,SLOT(UpdateConflictsViewColorization()));
+	}
 	searchWindow->show();
 }
 
