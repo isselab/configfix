@@ -528,42 +528,6 @@ void fexpr_as_char_short(struct fexpr *e, struct gstr *s, int parent)
 }
 
 /*
- * print a CNF-clause
- */
-void print_cnf_clause(struct cnf_clause *cl)
-{
-	int i;
-	struct cnf_literal *lit;
-	printf("\t");
-	for (i = 0; i < cl->lits->len; i++) {
-		lit = g_array_index(cl->lits, struct cnf_literal *, i);
-		printf("%s", str_get(&lit->name));
-		if (i < cl->lits->len - 1)
-			printf(" v ");
-	}
-	
-	#if PRINT_CNF_REASONS
-		printf("\t");
-		printf("%s", str_get(&cl->reason));
-		printf(" ");
-	#endif
-	printf("\n");
-}
-
-/*
- * print all CNF-clauses
- */
-void print_all_cnf_clauses(GArray *cnf_clauses)
-{
-	int i;
-	struct cnf_clause *cl;
-	for (i = 0; i < cnf_clauses->len; i++) {
-		cl = g_array_index(cnf_clauses, struct cnf_clause *, i);
-		print_cnf_clause(cl);
-	}
-}
-
-/*
  * print all constraints for a symbol
  */
 void print_sym_constraint(struct symbol* sym)
@@ -625,29 +589,30 @@ static void print_satmap_dimacs(gpointer key, gpointer value, gpointer fd)
  */
 void write_cnf_to_file(GArray *cnf_clauses, int sat_variable_nr, int nr_of_clauses)
 {
-	FILE *fd = fopen(OUTFILE_DIMACS, "w");
-
-	/* symbols, constants & tmp vars */
-	g_hash_table_foreach(satmap, print_satmap_dimacs, fd);
-
-	/* stats */
-	fprintf(fd, "p cnf %d %d\n", sat_variable_nr - 1, nr_of_clauses);
-	
-	/* clauses */
-	int i, j;
-	struct cnf_clause *cl;
-	struct cnf_literal *lit;
-	for (i = 0; i < cnf_clauses->len; i++) {
-		cl = g_array_index(cnf_clauses, struct cnf_clause *, i);
-		for (j = 0; j < cl->lits->len; j++) {
-			lit = g_array_index(cl->lits, struct cnf_literal *, j);
-			fprintf(fd, "%d ", lit->val);
-			if (j == cl->lits->len - 1)
-				fprintf(fd, "0\n");
-		}
-	}
-
-	fclose(fd);
+	perror("Fix function write_cnf_to_file");
+// 	FILE *fd = fopen(OUTFILE_DIMACS, "w");
+// 
+// 	/* symbols, constants & tmp vars */
+// 	g_hash_table_foreach(satmap, print_satmap_dimacs, fd);
+// 
+// 	/* stats */
+// 	fprintf(fd, "p cnf %d %d\n", sat_variable_nr - 1, nr_of_clauses);
+// 	
+// 	/* clauses */
+// 	int i, j;
+// 	struct cnf_clause *cl;
+// 	struct cnf_literal *lit;
+// 	for (i = 0; i < cnf_clauses->len; i++) {
+// 		cl = g_array_index(cnf_clauses, struct cnf_clause *, i);
+// 		for (j = 0; j < cl->lits->len; j++) {
+// 			lit = g_array_index(cl->lits, struct cnf_literal *, j);
+// 			fprintf(fd, "%d ", lit->val);
+// 			if (j == cl->lits->len - 1)
+// 				fprintf(fd, "0\n");
+// 		}
+// 	}
+// 
+// 	fclose(fd);
 }
 
 /*

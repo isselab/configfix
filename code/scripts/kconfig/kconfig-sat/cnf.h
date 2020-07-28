@@ -13,8 +13,11 @@ struct cnf_clause * create_cnf_clause_struct(void);
 /* add a literal to a CNF-clause */
 void add_literal_to_clause(struct cnf_clause *cl, int val);
 
+/* check whether a fexpr is in CNF */
+bool fexpr_is_cnf(struct fexpr *e);
+
 /* check, if a CNF-clause is a tautology */
-bool cnf_is_tautology(struct cnf_clause *cl);
+// bool cnf_is_tautology(struct cnf_clause *cl);
 
 ///////////////////////////////////////////////////////////
 

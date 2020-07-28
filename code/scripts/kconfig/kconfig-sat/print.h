@@ -43,12 +43,6 @@ void fexpr_as_char(struct fexpr *e, struct gstr *s, int parent);
 /* write an fexpr into a string */
 void fexpr_as_char_short(struct fexpr *e, struct gstr *s, int parent);
 
-/* print a CNF-clause */
-void print_cnf_clause(struct cnf_clause *cl);
-
-/* print all CNF-clauses */
-void print_all_cnf_clauses(GArray *cnf_clauses);
-
 /* print all constraints for a symbol */
 void print_sym_constraint(struct symbol *sym);
 

@@ -11,32 +11,13 @@
 extern unsigned int sat_variable_nr;
 extern unsigned int tmp_variable_nr;
 extern GHashTable *satmap;
-extern GArray *cnf_clauses; /* array with all CNF-clauses */
-extern struct tmp_sat_variable *tmp_sat_vars;
-extern unsigned int nr_of_clauses; /* number of CNF-clauses */
+extern GHashTable *cnf_clauses_map; /* hash-table with all CNF-clauses */
+extern GArray *sdv_arr; /* array with conflict-symbols */
 extern struct fexpr *const_false;
 extern struct fexpr *const_true;
 extern struct fexpr *symbol_yes_fexpr;
 extern struct fexpr *symbol_mod_fexpr;
 extern struct fexpr *symbol_no_fexpr;
-
-/* struct for a CNF-clause */
-struct cnf_clause {
-	/* array of all literals */
-	GArray *lits;
-
-	/* reason - string refers to a specific boolean law that produced this clause */
-	struct gstr reason;
-};
-
-/* struct for a literal in a CNF-clause */
-struct cnf_literal {
-	/* integer value needed by the SAT-solver */
-	int val;
-
-	/* string representation for debugging */
-	struct gstr name;
-};
 
 /* wrapper for GArray */
 struct garray_wrapper {

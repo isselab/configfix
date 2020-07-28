@@ -27,7 +27,6 @@ extern "C" {
 #include "print.h"
 #include "rangefix.h"
 #include "satutils.h"
-#include "symbol_mod.h"
 #include "utils.h"
 
 

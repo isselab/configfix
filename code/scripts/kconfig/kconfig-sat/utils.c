@@ -29,7 +29,11 @@ void init_config(const char *Kconfig_file)
 void init_data(void)
 {
 	/* initialize array with all CNF clauses */
-	cnf_clauses = g_array_new(false, false, sizeof(struct cnf_clause *));
+	cnf_clauses_map = g_hash_table_new_full(
+		g_int_hash, g_int_equal, //< This is an integer hash.
+		free, //< Call "free" on the key (made with "malloc").
+		NULL //< Call "free" on the value (made with "strdup").
+	);
 	
 	/* create hashtable with all fexpr */
 	satmap = g_hash_table_new_full(
@@ -473,27 +477,41 @@ unsigned int count_counstraints(void)
 	return c;
 }
 
+/* 
+ * check whether symbol is to be changed 
+ */
+bool sym_is_sdv(GArray *arr, struct symbol *sym)
+{
+	unsigned int i;
+	struct symbol_dvalue *sdv;
+	for (i = 0; i < arr->len; i++) {
+		sdv = g_array_index(arr, struct symbol_dvalue *, i);
+		
+		if (sym == sdv->sym)
+			return true;
+	}
+	
+	return false;
+}
 
 /*
- * print a warning about unmet dependencies
+ * add integer to a GArray
+ * cannot add values, must use variables
  */
-void sym_warn_unmet_dep(struct symbol *sym)
+void g_array_add_ints(int num, ...)
 {
-	struct gstr gs = str_new();
-
-	str_printf(&gs,
-		   "\nWARNING: unmet direct dependencies detected for %s\n",
-		   sym->name);
-	str_printf(&gs,
-		   "  Depends on [%c]: ",
-		   sym->dir_dep.tri == mod ? 'm' : 'n');
-	expr_gstr_print(sym->dir_dep.expr, &gs);
-	str_printf(&gs, "\n");
-
-	expr_gstr_print_revdep(sym->rev_dep.expr, &gs, yes,
-			       "  Selected by [y]:\n");
-	expr_gstr_print_revdep(sym->rev_dep.expr, &gs, mod,
-			       "  Selected by [m]:\n");
-
-	fputs(str_get(&gs), stderr);
+	va_list valist;
+	int i, *val;
+	
+	va_start(valist, num);
+	
+	GArray *arr = va_arg(valist, GArray *);
+	
+	for (i = 1; i < num; i++) {
+		val = malloc(sizeof(int));
+		*val = va_arg(valist, int);
+		g_array_append_val(arr, val);
+	}
+	
+	va_end(valist);
 }

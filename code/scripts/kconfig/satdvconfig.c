@@ -11,7 +11,7 @@
 
 #include "kconfig-sat/satconf.h"
 
-static bool init_done = false;
+// static bool init_done = false;
 
 static struct symbol * read_symbol_from_stdin(void);
 static struct symbol_dvalue * sym_create_sdv(struct symbol *sym, char *input);

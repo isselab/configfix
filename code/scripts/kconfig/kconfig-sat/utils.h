@@ -86,7 +86,10 @@ void sym_add_constraint(struct symbol *sym, struct fexpr *constraint);
 /* count the number of all constraints */
 unsigned int count_counstraints(void);
 
-/* print a warning about unmet dependencies */
-void sym_warn_unmet_dep(struct symbol *sym);
+/* check whether symbol is to be changed */
+bool sym_is_sdv(GArray *arr, struct symbol *sym);
+
+/* add an integer to a GArray */
+void g_array_add_ints(int num, ...);
 
 #endif

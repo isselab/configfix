@@ -15,10 +15,8 @@ unsigned int sat_variable_nr = 1;
 unsigned int tmp_variable_nr = 1;
 
 GHashTable *satmap = NULL; /* hash table with all SAT-variables and their fexpr */
-GArray *cnf_clauses; /* array with all CNF-clauses */
-struct tmp_sat_variable *tmp_sat_vars;
-
-unsigned int nr_of_clauses = 0; /* number of CNF-clauses */
+GHashTable *cnf_clauses_map; /* hash-table with all CNF-clauses */
+GArray *sdv_arr; /* array with conflict-symbols */
 
 struct fexpr *const_false; /* constant False */
 struct fexpr *const_true; /* constant True */
@@ -26,9 +24,10 @@ struct fexpr *symbol_yes_fexpr; /* symbol_yes as fexpr */
 struct fexpr *symbol_mod_fexpr; /* symbol_mod as fexpr */
 struct fexpr *symbol_no_fexpr; /* symbol_no_as fexpr */
 
+static PicoSAT *pico;
 static bool init_done = false;
 
-static bool sym_is_sdv(GArray *arr, struct symbol *sym);
+static bool sdv_within_range(GArray *arr);
 
 /* -------------------------------------- */
 
@@ -159,6 +158,12 @@ GArray * run_satconf(GArray *arr)
 	clock_t start, end;
 	double time;
 	
+	/* check whether all values can be applied -> no need to run */
+	if (sdv_within_range(arr)) {
+		printf("\nAll symbols are already within range.\n\n");
+		return g_array_new(false, false, sizeof(GArray *));
+	}
+	
 	if (!init_done) {
 		printf("\n");
 		printf("Init...");
@@ -177,73 +182,44 @@ GArray * run_satconf(GArray *arr)
 		
 		/* get the constraints */
 		get_constraints();
-
 		
 		end = clock();
 		time = ((double) (end - start)) / CLOCKS_PER_SEC;
 
 		printf("done. (%.6f secs.)\n", time);
 		
+		/* start PicoSAT */
+		pico = initialize_picosat();
+		printf("Building CNF-clauses...");
+		start = clock();
+		
+		/* construct the CNF clauses */
+		construct_cnf_clauses(pico);
+		
+		end = clock();
+		time = ((double) (end - start)) / CLOCKS_PER_SEC;
+		
+		printf("done. (%.6f secs.)\n", time);
+		
+		printf("CNF-clauses added: %d\n", picosat_added_original_clauses(pico));
+		
 		init_done = true;
 	}
 	
 // 	return EXIT_SUCCESS;
-	
-	/* start PicoSAT */
-	PicoSAT *pico = initialize_picosat();
-	printf("Building CNF-clauses...");
-	start = clock();
-	
-	/* construct the CNF clauses */
-	construct_cnf_clauses(pico);
-	
-	end = clock();
-	time = ((double) (end - start)) / CLOCKS_PER_SEC;
-	
-	printf("done. (%.6f secs.)\n", time);
 
-	/* add unit clauses for each symbol */
-	unsigned int i;
-	struct symbol_dvalue *sdv;
-	for (i = 0; i < arr->len; i++) {
-		sdv = g_array_index(arr, struct symbol_dvalue *, i);
-		
-		if (sdv->sym->type == S_BOOLEAN) {
-			switch (sdv->tri) {
-			case yes:
-				picosat_add_arg(pico, sdv->sym->fexpr_y->satval, 0);
-				break;
-			case no:
-				picosat_add_arg(pico, -(sdv->sym->fexpr_y->satval), 0);
-				break;
-			case mod:
-				perror("Should not happen.\n");
-			}
-		} else if (sdv->sym->type == S_TRISTATE) {
-			switch (sdv->tri) {
-			case yes:
-				picosat_add_arg(pico, sdv->sym->fexpr_y->satval, 0);
-				picosat_add_arg(pico, -(sdv->sym->fexpr_m->satval), 0);
-				break;
-			case mod:
-				picosat_add_arg(pico, -(sdv->sym->fexpr_y->satval), 0);
-				picosat_add_arg(pico, sdv->sym->fexpr_m->satval, 0);
-				break;
-			case no:
-				picosat_add_arg(pico, -(sdv->sym->fexpr_y->satval), 0);
-				picosat_add_arg(pico, -(sdv->sym->fexpr_m->satval), 0);
-			}
-		}
-	}
+	sdv_arr = g_array_copy(arr);
 	
-	printf("CNF-clauses added: %d\n", picosat_added_original_clauses(pico));
+	/* add assumptions for conflict-symbols */
+	sym_add_assumption_sdv(pico, sdv_arr);
 	
 	/* add assumptions for all other symbols */
+	unsigned int i;
 	struct symbol *sym;
 	for_all_symbols(i, sym) {
 		if (sym->type == S_UNKNOWN) continue;
 		
-		if (!sym_is_sdv(arr, sym))
+		if (!sym_is_sdv(sdv_arr, sym))
 			sym_add_assumption(pico, sym);
 	}
 	
@@ -262,35 +238,30 @@ GArray * run_satconf(GArray *arr)
 	time = ((double) (end - start)) / CLOCKS_PER_SEC;
 	printf("done. (%.6f secs.)\n\n", time);
 	
+	GArray *ret;
+	
 	if (res == PICOSAT_SATISFIABLE) {
 		printf("===> PROBLEM IS SATISFIABLE <===\n");
 		
-		GArray *ret = g_array_new(false, false, sizeof(GArray *));
-// 		GArray *ret = rangefix_init(pico);
-		picosat_reset(pico);
-// 		free(pico);
-		return ret;
+		ret = g_array_new(false, false, sizeof(GArray *));
 		
 	} else if (res == PICOSAT_UNSATISFIABLE) {
 		printf("===> PROBLEM IS UNSATISFIABLE <===\n");
 		printf("\n");
 		
-		GArray *ret = rangefix_init(pico);
-// 		free(pico);
-		picosat_reset(pico);
-// 		free(pico);
-		return ret;
+		ret = rangefix_init(pico);
 	}
 	else {
 		printf("Unknown if satisfiable.\n");
-		picosat_reset(pico);
-// 		free(pico);
-		return NULL;
+		
+		ret = NULL;
 	}
 	
-	picosat_reset(pico);
+// 	picosat_reset(pico);
+// 	g_hash_table_remove_all(cnf_clauses_map);
 // 	free(pico);
-	return NULL;
+	g_array_free(sdv_arr, true);
+	return ret;
 }
 
 /*
@@ -306,16 +277,23 @@ int apply_satfix(GArray *fix)
 	return EXIT_SUCCESS;
 }
 
-static bool sym_is_sdv(GArray *arr, struct symbol *sym)
+/*
+ * check whether all symbols are already within range
+ */
+static bool sdv_within_range(GArray *arr)
 {
 	unsigned int i;
 	struct symbol_dvalue *sdv;
 	for (i = 0; i < arr->len; i++) {
 		sdv = g_array_index(arr, struct symbol_dvalue *, i);
 		
-		if (sym == sdv->sym)
-			return true;
+		assert(sym_is_boolean(sdv->sym));
+		
+		if (sdv->tri == sym_get_tristate_value(sdv->sym)) continue;
+		
+		if (!sym_tristate_within_range(sdv->sym, sdv->tri))
+			return false;
 	}
 	
-	return false;
+	return true;
 }
