@@ -79,8 +79,8 @@ static symbol_fix* get_symbol_fix(struct symbol *sym, GArray *diag);
 static const char* sym_fix_get_string_value(struct symbol_fix *sym_fix);
 static bool diag_dependencies_met(GArray *diag);
 static bool symbol_has_changed(struct symbol *sym, GHashTable *backup);
-// static void print_setup(const char *name);
-static void print_config_stats(void);
+static void print_setup(const char *name);
+static void print_config_stats(ConfigList *list);
 static GArray* rearrange_diagnosis(GArray *diag, int fix_idxs[]);
 // static void save_diagnosis(GArray *diag, char* filename);
 static void save_diagnosis(GArray *diag, char* file_prefix, bool valid_diag);
@@ -2000,6 +2000,105 @@ static void print_setup(const char* name)
 }
 
 /*
+ * Print ConfigItem and symbol statistics for given ConfigList.
+ */
+static void print_config_stats(ConfigList *list) 
+{
+	printf("\nConfiguration statistics:\n");
+	printf("---------------------------\n");
+
+	// iterate menus
+	QTreeWidgetItemIterator it(list);
+	ConfigItem* item;
+	struct symbol* sym;
+
+	// collect statistics
+	int count=0, menuless=0, invisible=0, unknown=0,
+		symbolless=0, nonchangeable=0, promptless=0,
+		conf_item_candidates=0;
+
+	while (*it) {
+		item = (ConfigItem*)(*it);
+		count++;
+		if (!item->menu) {
+			menuless++;
+			++it;
+			continue;
+		}
+
+		if (!menu_has_prompt(item->menu))
+			promptless++;
+
+		if (!menu_is_visible(item->menu))
+			invisible++;
+		
+		sym = item->menu->sym;
+		if (!sym) {
+			symbolless++;
+			++it;
+			continue;
+		}
+
+		if (sym_get_type(sym) == S_UNKNOWN)
+			unknown++;
+
+		if (!sym_is_changeable(sym))
+			nonchangeable++;
+		
+		if (sym_has_prompt(sym) && !sym_is_changeable(sym))
+			// conflictsView->candidate_symbols++;
+			conf_item_candidates++;
+
+		//DEBUG - print choices
+		// if (sym_is_choice(sym)) {
+		// 	printf("Choice %s = %s", 
+		// 		sym_get_name(sym), sym_has_value(sym) ? sym_get_string_value(sym) : "no value");
+		// 	if (sym_has_value(sym) && sym->curr.val) {
+		// 		printf(" (value is %s)", sym_get_name((struct symbol*)sym->curr.val));
+		// 	}
+		// 	printf("\n");
+		// }
+		// if (sym_is_choice_value(sym))
+		// 	printf("Choice value %s = %s\n", 
+		// 		sym_get_name(sym), sym_get_string_value(sym));
+		//DEBUG
+		++it;
+	}
+
+	printf("%i ConfigItems: %i menu-less, %i prompt-less, %i invisible, %i symbol-less, %i unknown type, %i non-changeable\n", 
+		count, menuless, promptless, invisible, symbolless, unknown, nonchangeable);
+	
+
+	// alternative counts by iterating symbols
+	int i, sym_candidates=0, promptless_unchangeable=0;
+	count=0, invisible=0, unknown=0, nonchangeable=0, promptless=0;
+
+	for_all_symbols(i, sym) {
+		count++;
+
+		if (!sym_has_prompt(sym))
+			promptless++;
+		if (sym->visible == no)
+			invisible++;
+		if (!sym_is_changeable(sym))
+			nonchangeable++;
+		if (sym_get_type(sym) == S_UNKNOWN)
+			unknown++;
+		if (!sym_is_changeable(sym) && sym_has_prompt(sym))
+			sym_candidates++;
+		if (!sym_is_changeable(sym) && !sym_has_prompt(sym))
+			promptless_unchangeable++;
+	}
+
+	printf("%i symbols: %i prompt-less, %i invisible, %i unknown type, %i non-changeable, %i prompt-less & unchangeable\n", 
+		count, promptless, invisible, unknown, nonchangeable, promptless_unchangeable);
+	
+	printf("Conflict candidates: %i config items (%i symbols)\n", 
+		// conflictsView->candidate_symbols, candidates);
+		conf_item_candidates, sym_candidates);
+}
+
+/*
  * Create permutation of the diagnosis with element order specified 
  * by the index array.
  */
@@ -3039,94 +3138,7 @@ int main(int ac, char** av)
 	ConflictsView *conflictsView = v->getConflictsView();
 	conflictsView->conflictsTable->resizeColumnsToContents();
 
-	// iterate menus
-	QTreeWidgetItemIterator it(configView->list);
-	ConfigItem* item;
-	struct symbol* sym;
-
-	// collect statistics
-	int count=0, menuless=0, invisible=0, unknown=0,
-		symbolless=0, nonchangeable=0, promptless=0;
-
-	while (*it) {
-		item = (ConfigItem*)(*it);
-		count++;
-		if (!item->menu) {
-			menuless++;
-			++it;
-			continue;
-		}
-
-		if (!menu_has_prompt(item->menu))
-			promptless++;
-
-		if (!menu_is_visible(item->menu))
-			invisible++;
-		
-		sym = item->menu->sym;
-		if (!sym) {
-			symbolless++;
-			++it;
-			continue;
-		}
-
-		if (sym_get_type(sym) == S_UNKNOWN)
-			unknown++;
-
-		if (!sym_is_changeable(sym))
-			nonchangeable++;
-		
-		if (sym_has_prompt(sym) && !sym_is_changeable(sym))
-			conflictsView->candidate_symbols++;
-
-		//DEBUG - print choices
-		// if (sym_is_choice(sym)) {
-		// 	printf("Choice %s = %s", 
-		// 		sym_get_name(sym), sym_has_value(sym) ? sym_get_string_value(sym) : "no value");
-		// 	if (sym_has_value(sym) && sym->curr.val) {
-		// 		printf(" (value is %s)", sym_get_name((struct symbol*)sym->curr.val));
-		// 	}
-		// 	printf("\n");
-		// }
-		// if (sym_is_choice_value(sym))
-		// 	printf("Choice value %s = %s\n", 
-		// 		sym_get_name(sym), sym_get_string_value(sym));
-		//DEBUG
-
-
-		++it;
-	}
-
-	printf("\n");
-	printf("%i ConfigItems: %i menu-less, %i prompt-less, %i invisible, %i symbol-less, %i unknown type, %i non-changeable\n", 
-		count, menuless, promptless, invisible, symbolless, unknown, nonchangeable);
-	
-
-	// alternative counts by iterating symbols
-	int i, candidates=0, promptless_unchangeable=0;
-	count=0,  invisible=0, unknown=0, nonchangeable=0, promptless=0;
-	for_all_symbols(i, sym) {
-		count++;
-
-		if (!sym_has_prompt(sym))
-			promptless++;
-		if (sym->visible == no)
-			invisible++;
-		if (!sym_is_changeable(sym))
-			nonchangeable++;
-		if (sym_get_type(sym) == S_UNKNOWN)
-			unknown++;
-		if (!sym_is_changeable(sym) && sym_has_prompt(sym))
-			candidates++;
-		if (!sym_is_changeable(sym) && !sym_has_prompt(sym))
-			promptless_unchangeable++;
-	}
-
-	printf("%i symbols: %i prompt-less, %i invisible, %i unknown type, %i non-changeable, %i prompt-less & unchangeable\n", 
-		count, promptless, invisible, unknown, nonchangeable, promptless_unchangeable);
-	
-	printf("Conflict candidates: %i config items (%i symbols)\n", 
-		conflictsView->candidate_symbols, candidates);
+	print_config_stats(configView->list);
 
 	initial_config = config_backup();
 #endif
