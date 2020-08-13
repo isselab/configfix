@@ -89,4 +89,6 @@ unsigned int count_counstraints(void);
 /* print a warning about unmet dependencies */
 void sym_warn_unmet_dep(struct symbol *sym);
 
+/* return the string representation of the symbol's type */
+char* sym_get_type_name(struct symbol *sym);
 #endif

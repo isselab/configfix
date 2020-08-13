@@ -497,3 +497,16 @@ void sym_warn_unmet_dep(struct symbol *sym)
 
 	fputs(str_get(&gs), stderr);
 }
+
+/*
+ * return the string representation of the given symbol's type
+ */
+char* sym_get_type_name(struct symbol *sym) 
+{ 
+	/*
+	 * This is different from sym_type_name(sym->type),
+	 * because sym_get_type() covers some special cases
+	 * related to choice values and MODULES.
+	 */
+	return sym_type_name(sym_get_type(sym));
+}
