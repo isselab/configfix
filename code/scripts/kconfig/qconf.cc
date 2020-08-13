@@ -20,9 +20,12 @@
 #include <glib.h>
 #include "lkc.h"
 #include "kconfig-sat/satconf.h"
+
 #ifdef CONFIGFIX_TEST
 #include <time.h>
 #include "kconfig-sat/utils.h"
+#include "kconfig-sat/rangefix.h"
+#include <algorithm>    // std::next_permutation
 #endif
 
 #include <qapplication.h>
@@ -63,6 +66,24 @@ static inline QString qgettext(const char* str)
 {
 	return QString::fromLocal8Bit(str);
 }
+
+#ifdef CONFIGFIX_TEST
+// default conflict size, use -c N command line argument to change
+static int conflict_size = 1;
+// static char* config_path;
+static GHashTable* initial_config;
+static GHashTable* config_backup(void);
+static int config_compare(GHashTable *backup);
+static void config_reset(void);
+static symbol_fix* get_symbol_fix(struct symbol *sym, GArray *diag);
+static const char* sym_fix_get_string_value(struct symbol_fix *sym_fix);
+static bool diag_dependencies_met(GArray *diag);
+static bool symbol_has_changed(struct symbol *sym, GHashTable *backup);
+static void print_setup(const char *name);
+static GArray* rearrange_diagnosis(GArray *diag, int fix_idxs[]);
+static void save_diagnosis(GArray *diag, char* filename);
+static char* get_config_dir(void);
+#endif
 
 ConfigSettings::ConfigSettings()
 	: QSettings("kernel.org", "qconf")
@@ -1295,7 +1316,7 @@ void ConflictsView::calculateFixes(void)
 {
 	std::cout << "calculating fixes" << std::endl;
 	// call satconf to get a solution by looking at the grid and taking the symbol and their desired value.
-	//get the symbols from  grid:
+	// get the symbols from  grid:
 	if(conflictsTable->rowCount() == 0)
 		return;
 
@@ -1381,14 +1402,20 @@ void ConflictsView::changeAll(void)
 	// emit(refreshMenu());
 }
 
-#ifdef CONFIGFIX_TEST
 void ConflictsView::testRandomConlict(void)
 {
+/*
+ * Keeping this slot empty for 'make xconfig'
+ * since I cannot figure out how to set
+ * -DCONFIGFIX_TEST during qconf.moc compilation.
+ */
+#ifdef CONFIGFIX_TEST
 	// conflictsTable->clearContents();
 
 	// // iterate menu items
 	// QTreeWidgetItemIterator it(configList);
 	// ConfigItem* item;
+	// int i;
 	// struct symbol* sym;
 
 	// // random seed
@@ -1442,33 +1469,320 @@ void ConflictsView::testRandomConlict(void)
 	// }
 
 	// calculateFixes();
+
 	// verify fixes
+	/*
+	 - save & reload config - should match
+	 - applied (all symbols have target values)
+	 - compare changed symbols and dependencies
+	 - restoring initial configuration
+	 */
+	GArray *diag, *permutation;
+	int size, perm_count;
+	bool valid_diag;
 	if (solution_output != nullptr && solution_output->len > 0) {
 
-		GHashTable *initial_config, *after_fix;
+		GHashTable *after_fix, *after_write;
 
 		// backup current configuration
-		printf("Backing up current configuration...\n");
-		initial_config = backup_config(); 
-		printf("Done\n");
+		// initial_config = config_backup(); 
 
-		// apply the fix
-		GArray *fix = g_array_index(solution_output, GArray*, 0);
-		apply_satfix(fix);
+		int i, j;
+		for (i=0; i < solution_output->len; i++) {
 
-		// save and reload configuration
-		conf_write(".config_fix");
+			// FIXME conflict path 
 
-		// check that only symbols in the fix were changed 
+			// construct file paths
+			// e.g. diag09
+			char diag_suffix[strlen("diagXX") + 1]; 
+			sprintf(diag_suffix, "diag%.2d", i+1);
+			printf("\nDiag suffix: %s\n", diag_suffix);
+			// e.g. diag09.txt
+			char diag_filename[
+				strlen(get_config_dir()) 
+				+ strlen(diag_suffix)
+				+ strlen(".txt") + 1];
+			sprintf(diag_filename, "%s%s.txt", get_config_dir(), diag_suffix);
+			// printf("Diagnosis filename: %s\n", diag_filename);
+			// e.g. path/to/config/sample/.config.diag09
+			char config_filename[
+				strlen(get_config_dir()) 
+				+ strlen(".config.") 
+				+ strlen(diag_suffix) + 1];
+			sprintf(config_filename, "%s.config.%s", get_config_dir(), diag_suffix);
+			printf(".config with applied diagnosis: %s\n", config_filename);
+			
+
+			// select diagnosis
+			diag = g_array_index(solution_output, GArray*, i);
+			size = diag->len;
+			perm_count = 0;
+
+			// print diagnosis info
+			printf("\n-------------------------------\nDiagnosis %i\n", i+1);
+			print_diagnosis_symbol(diag);
+			save_diagnosis(diag, diag_filename);
+			perror("perror");
+			config_compare(initial_config);
+			// apply the fixes 
+			printf("\nTrying to apply fixes: ");
+
+			/* 
+			 * Collect indices in the diagnosis fixes.
+			 * std::next_permutation() generates lexicographically larger permutations,
+			 * hence its argument array should be initially sorted in ascending order.
+			 */
+			int fix_idxs[size], k;
+			for (k=0; k<size; k++)
+				fix_idxs[k] = k;
+
+			valid_diag = false;
+
+			do {
+				permutation = rearrange_diagnosis(diag, fix_idxs);
+				// XXX debug
+				printf("%d\n", permutation->len);
+				print_diagnosis_symbol(permutation);
+				// XXX debug
+				perm_count++;
+				if (apply_fix_bool(permutation)) {
+					valid_diag = true;
+					break;
+				} else {
+					//DEBUG
+					config_compare(initial_config);
+					//DEBUG
+					// dot = failed test
+					printf(".");
+					g_array_free(permutation, false);
+					conf_read(conf_get_configname());
+					// refresh menu?
+					config_compare(initial_config);
+					getchar();
+				} 
+			} while ( std::next_permutation(fix_idxs, fix_idxs+size) );
+
+			printf("%s (%d permutations tested)\n", 
+				valid_diag ? "SUCCESS" : "FAILURE", perm_count);
+
+			// g_array_free(permutation, false);
+			g_clear_pointer(&permutation, g_ptr_array_unref);
+			
+			if (!valid_diag)
+				continue;
+
+
+			// iterate fix, compare current value to target?
+
+			// check for unmet dependencies
+
+			// dependencies
+			getchar();
+			// if (!diag_dependencies_met(fix))
+			// 	printf("Fix has unment dependencies\n");
+			// else
+			// 	printf("Fix dependencies have been met\n");
+			// printf("Comparing after apply_satfix()...\n");
+			config_compare(initial_config);
+			after_fix = config_backup();
+
+			// save configuration
+			getchar();
+			conf_write(config_filename);
+			// printf("Comparing after conf_write()...\n");
+
+			// compare with latest backup
+			getchar();
+			config_compare(initial_config);
+			after_write = config_backup();
+			if (!diag_dependencies_met(diag))
+				printf("Fix has unmet dependencies\n");
+			else
+				printf("Fix dependencies have been met\n");
+
+			// reload saved configuration
+
+			conf_read(config_filename);
+			// make sure it hasn't changed
+			printf("Reloaded configuration and backup %s\n", 
+				config_compare(after_fix) ? "MISMATCH" : "MATCH");
+				// return;
+			g_hash_table_destroy(after_write);
+			
+
+			//----------------------------
+			// verify changed symbols
+			struct symbol *sym;
+			struct symbol_fix *fix;
+			char *target_val, *actual_val;
+			int changed = 0;
+			struct gstr gs;
+
+			for_all_symbols(j, sym) {
+
+				if (sym_get_type(sym) == S_UNKNOWN) {
+					continue;
+				}
+				
+				// a changed symbol
+				if (symbol_has_changed(sym, initial_config)) {
+					changed++;
+
+					// should be either fix symbol
+					fix = get_symbol_fix(sym, diag);
+					if (fix) {
+						// verify value
+						target_val = strdup(sym_fix_get_string_value(fix));
+						actual_val = strdup(sym_get_string_value(sym));
+						if (strcmp(target_val, actual_val))
+							printf("Values mismatch for symbol %s: target %s != actual %s\n", 
+								sym->name, target_val, actual_val);
+						else
+							// FIXME - bool fixes_applied
+							printf("\nFix applied for %s: target %s == actual %s\n", 
+								sym->name, target_val, actual_val);
+						free(target_val);
+						free(actual_val);
+					}
+
+					/*
+						Next
+						- verify choices
+						- free pointers		
+					*/
+
+					// or fix dependency
+					// count dependencies, compare with no. changes to initial config
+					else {
+						printf("\nChanged symbol %s:\n", sym_get_name(sym));
+						
+						// printf("\tDirect dependencies: ");
+						// expr_fprint(sym->dir_dep.expr, stdout);
+						// printf("\n");
+						// gs = str_new();
+						// str_printf(&gs, "\tDirect dependencies: ");
+						// expr_gstr_print(sym->dir_dep.expr, &gs);
+						// str_printf(&gs, "\n");
+						// fputs(str_get(&gs), stdout);
+						// str_free(&gs);
+						
+						// // FIXME change to expr_gstr_print_revdep
+						// if (sym->rev_dep.expr) {
+						// 	printf("\tReverse dependencies: ");
+						// 	expr_fprint(sym->rev_dep.expr, stdout);
+						// 	printf("\n");
+
+						// 	gs = str_new();
+						// 	expr_gstr_print_revdep(sym->rev_dep.expr, &gs, yes, " \tSelected by [y]:\n");
+						// 	str_printf(&gs, "\n");
+						// 	expr_gstr_print_revdep(sym->rev_dep.expr, &gs, mod, " \tSelected by [m]:\n");
+						// 	str_printf(&gs, "\n");
+						// 	expr_gstr_print_revdep(sym->rev_dep.expr, &gs, no, " \tSelected by [n]:\n");
+						// 	str_printf(&gs, "\n");
+						// 	fputs(str_get(&gs), stdout);
+						// 	str_free(&gs);
+						// }
+
+						// if (sym->implied.expr) {
+						// 	printf("\tWeak dependencies: ");
+						// 	expr_fprint(sym->implied.expr, stdout);
+						// 	printf("\n");
+
+						// 	gs = str_new();
+						// 	expr_gstr_print_revdep(sym->implied.expr, &gs, yes, " \tImplied by [y]:\n");
+						// 	str_printf(&gs, "\n");
+						// 	expr_gstr_print_revdep(sym->implied.expr, &gs, mod, " \tImplied by [m]:\n");
+						// 	str_printf(&gs, "\n");
+						// 	expr_gstr_print_revdep(sym->implied.expr, &gs, no, " \tImplied by [n]:\n");
+						// 	str_printf(&gs, "\n");
+						// 	fputs(str_get(&gs), stdout);
+						// 	str_free(&gs);
+						// }
+					}
+				}
+			}
+			printf("%d changed symbols\n\n", changed);
+
+			// struct symbol *dep;
+			// for_all_fixes(diag, fix) {
+			// 	sym = fix->sym;
+			// 	printf("Fix symbol %s:\n\t", sym_get_name(sym));
+			// 	expr_fprint(sym->dir_dep.expr, stdout);
+			// 	printf("\n\n");
+			// 	// if (fix->sym->constraints->arr)
+			// 	// 	printf("Fix symbol %s has %i constrains\n",
+			// 	// 		fix->sym->name, fix->sym->constraints->arr->len);
+								
+			// 	// for (dep = sym_check_deps(sym); dep; sym = dep)
+			// 	// 	printf("Symbol %s depends on %s\n", 
+			// 	// 		sym_get_name(sym), sym_get_name(dep));
+			// }
+
+
+
+			// ------------------------------
+
+
+			// 	if (fix->type == SF_BOOLEAN) {
+			// 	if (fix->tri == sym_get_tristate_value(fix->sym)) {
+			// 		g_array_remove_index(tmp, i--);
+			// 		no_symbols_set++;
+			// 		continue;
+			// 	}
+			// } else if (fix->type == SF_NONBOOLEAN) {
+			// 	if (str_get(&fix->nb_val) == sym_get_string_value(fix->sym)) {
+			// 		g_array_remove_index(tmp, i--);
+			// 		no_symbols_set++;
+			// 		continue;
+			// 	}
+
+
+			// 	backup_val  = (char*) g_hash_table_lookup(backup, sym_get_name(sym));
+			// 	if (backup_val == NULL)
+			// 		backup_val = "no key";
+				
+			// 	current_val = strdup(sym_get_string_value(sym));
+			// 	if (strcmp(backup_val, current_val) != 0) {
+			// 		printf("%s %s %s/%s has changed: %s -> %s\n", 
+			// 			sym_is_choice(sym) ? "choice" : "", 
+			// 			sym_type_name(sym_get_type(sym)),
+			// 			sym_get_name(sym), sym->name, backup_val, current_val);
+			// 		mismatch++;
+			// 	} else
+			// 		match++;
+
+
+			
+			// conf_reset();
+			
+			// printf("Will parse Kconfig\n");getchar();
+			// conf_parse("Kconfig");
+			
+
+
+			// check that only symbols in the fix were changed 
+			printf("Will restore initial configuration (.config)\n");getchar();
+			config_reset();
+			emit(refreshMenu());
+			config_compare(initial_config);
+		}
+		return;
 	}
+
+	printf("Will restore initial configuration (.config)\n");getchar();
+	config_reset();
+	emit(refreshMenu());
+	config_compare(initial_config);
+#endif
 }
 
+#ifdef CONFIGFIX_TEST
 /*
  * Save the current configuration (symbol values) into hash table, 
  * where keys are symbol names, and values are symbol values.
  */
-GHashTable* backup_config() {
-	
+static GHashTable* config_backup() 
+{	
 	GHashTable *backup = g_hash_table_new_full(
 			g_str_hash,
 			g_str_equal,
@@ -1476,19 +1790,284 @@ GHashTable* backup_config() {
 			free
   	);
 
-	int i = 0;
+	printf("\nBacking up configuration...\n");
+
+	int i, sym_count = 0, duplicates = 0, unknowns = 0;
 	struct symbol *sym;
+	char* val;
 	for_all_symbols(i, sym) {
 
-		if (sym_get_type(sym) == S_UNKNOWN) continue;
+		sym_count++;
 
-		if (g_hash_table_lookup(backup, sym_get_name(sym)) != NULL)
-			printf("\tDuplicate key: %s\n", sym_get_name(sym));
+		if (sym_get_type(sym) == S_UNKNOWN) {
+			unknowns++;
+			continue;
+		}
 
+		val = (char*) g_hash_table_lookup(backup, sym_get_name(sym));
+		if (val != NULL) {
+			printf("\tDuplicate key: %s %s/%s\n", 
+				sym_get_type_name(sym), sym_get_name(sym), sym->name);
+			print_symbol(sym);
+			if (strcmp(val, sym_get_string_value(sym)))
+				printf("\t\tvalue has changed: %s -> %s", 
+					val, sym_get_string_value(sym));
+		}
+
+		//FIXME free pointer to prevent memleak
 		g_hash_table_insert(backup, strdup(sym_get_name(sym)), strdup(sym_get_string_value(sym)));
 	}
 
+	printf("Done: iterated %i symbols, %i symbols in backup table, %i UNKNOWNs ignored \n\n", 
+		sym_count, g_hash_table_size(backup), unknowns);
 	return backup;
+}
+
+/*
+ * Compare the current configuration with given backup.
+ */
+static int config_compare(GHashTable *backup) 
+{
+	// printf("Comparing current configuration with backup...\n");
+
+	// GHashTableIter iter;
+	// gpointer key, val;
+
+	// g_hash_table_iter_init(&iter, backup);
+	// while (g_hash_table_iter_next(&iter, &key, &val))
+	// 	{
+	// 		if (key != nullptr)
+	// 		printf("%s\n", (char*) key);
+	// 	}
+
+	struct symbol *sym;
+	int i, sym_count = 0, match = 0, mismatch = 0, unknowns = 0;
+	char *backup_val, *current_val;
+	for_all_symbols(i, sym) {
+
+		sym_count++;
+
+		if (sym_get_type(sym) == S_UNKNOWN) {
+			unknowns++;
+			continue;
+		}
+
+		backup_val  = (char*) g_hash_table_lookup(backup, sym_get_name(sym));
+		if (backup_val == NULL)
+			backup_val = "symbol backup missing";
+		
+		current_val = strdup(sym_get_string_value(sym));
+		if (strcmp(backup_val, current_val) != 0) {
+			printf("%s %s %s/%s has changed: %s -> %s\n", 
+				sym_is_choice(sym) ? "choice" : "", 
+				sym_type_name(sym_get_type(sym)),
+				sym_get_name(sym), sym->name, backup_val, current_val);
+			mismatch++;
+		} else
+			match++;
+
+		free(current_val);
+	}
+	printf("Done: %i symbols compared (%i match, %i mismatch), %i UNKNOWNs ignored\n", 
+		sym_count, match, mismatch, unknowns);
+	
+	printf("Current configuration and backup %s\n", mismatch ? "MISMATCH" : "MATCH");		
+
+	return mismatch;
+}
+
+/*
+ * Reset configuration to the initial one, which was read upon program start.
+ * Initial configuration filename is specified by the KCONFIG_CONFIG variable,
+ * and defaults to '.config' if the variable is not set.
+ */
+static void config_reset(void)
+{
+	conf_read(conf_get_configname());
+}
+
+/*
+ * If the diagnosis 'diag' contains a fix for symbol 'sym', return it. 
+ * Return NULL otherwise.
+ */
+static symbol_fix* get_symbol_fix(struct symbol *sym, GArray *diag) 
+{
+	struct symbol_fix *fix;
+	// int i;
+	for_all_fixes(diag, fix) {
+	// for (i = 0; i < diag->len; i++) for (fix = g_array_index(diag, struct symbol_fix *, i);fix;fix=NULL) {
+		// fix = g_array_index(diag, struct symbol_fix *, i);
+		// if (!fix->sym->name) {
+		// 	printf("\t\t%s%s %s: fix->sym->name is NULL\n", 
+		// 		sym_is_choice(fix->sym) ? "choice " : "", 
+		// 		sym_get_type_name(fix->sym),
+		// 		sym_get_name(fix->sym));
+		// } 
+		// else if (!sym->name) {
+		// 	printf("\t%s%s %s %s: sym->name is NULL (%s)\n", 
+		// 		sym_is_choice(sym) ? "choice" : "", 
+		// 		sym_is_choice_value(sym) ? "/choice value" : "",
+		// 		sym_get_type_name(sym),
+		// 		sym_get_name(sym),
+		// 		(sym_has_value(sym) && sym->curr.val) ? 
+		// 			sym_get_name((struct symbol*)sym->curr.val) : "no value");
+		// }
+		if (fix->sym->name && sym->name && strcmp(fix->sym->name, sym->name) == 0)
+			return fix;
+	}
+
+	return NULL;
+}
+
+/*
+ * Return value of the given symbol fix as string.
+ */ 
+static const char* sym_fix_get_string_value(struct symbol_fix *fix)
+{
+	if (fix->type == SF_BOOLEAN)
+		switch (fix->tri) {
+			case no:
+				return "n";
+			case mod:
+				return "m";
+			case yes:
+				return "y";
+		}
+	else if (fix->type == SF_NONBOOLEAN)
+		return str_get(&fix->nb_val);
+	
+	printf("Cannot get value: disallowed symbol fix\n");
+	return NULL;
+}
+
+/*
+ * Return 'false' if symbols in the diagnosis have unmet dependencies,
+ * 'true' otherwise.
+ */
+static bool diag_dependencies_met(GArray *diag) 
+{
+	bool result = true;
+	struct symbol_fix *fix;
+	int i;
+	for (i = 0; i < diag->len; i++) {
+		fix = g_array_index(diag, struct symbol_fix *, i);
+		if (sym_check_deps(fix->sym)) {
+			printf("\tFix symbol %s has unmet dependencies\n", sym_get_name(fix->sym));
+			result = false;
+		}
+	}
+	return result;
+}
+
+/*
+ * Return 'true' if the symbol value has changed compared to the backup.
+ */
+static bool symbol_has_changed(struct symbol *sym, GHashTable *backup)
+{
+	bool result = false;
+	char *backup_val, *current_val;
+	backup_val  = (char*) g_hash_table_lookup(backup, sym_get_name(sym));
+	current_val = strdup(sym_get_string_value(sym));
+	if (strcmp(backup_val, current_val))
+		result = true;
+	free(current_val);
+	return result;
+}
+
+/*
+ * Prints environment variables and parameters that affect configfix.testing
+ */
+static void print_setup(const char* name)
+{
+	printf("\nConfigfix testing enabled:\n");
+	printf("---------------------------\n");
+	// FIXME add CC_VERSION_TEXT and KERNELVERSION
+	printf("%-22s %s\n", "$CC:", getenv("CC"));
+	printf("%-22s %s\n", "$ARCH:", getenv("ARCH"));
+	printf("%-22s %s\n", "$SRCARCH:", getenv("SRCARCH"));
+	printf("%-22s %s\n", "Working directory:", getenv("PWD"));
+	printf("%-22s %s\n", "$srctree:", getenv("srctree"));
+	printf("%-22s %s\n", "Kconfig file:", name);
+	if (rootmenu.prompt)
+			printf("%-22s %s\n", "Root menu prompt:", rootmenu.prompt->text);
+	printf("%-22s %s %s\n", "Configuration sample:", 
+		// initial configuration file
+		conf_get_configname(), 
+		// either set in KCONFIG_CONFIG or default '.config'
+		""); //getenv("KCONFIG_CONFIG") ? "(via KCONFIG_CONFIG)" : "(default)");
+	//printf("%-22s %s (len=%d)\n", "Config dir:", get_config_dir(), strlen(get_config_dir()));
+	printf("%-22s %d\n", "Conflict size:", conflict_size);
+}
+
+/*
+ * Create permutation of the diagnosis with element order specified 
+ * by the index array.
+ */
+static GArray* rearrange_diagnosis(GArray *diag, int fix_idxs[])
+{
+	// compare array sizes
+	// if (diag->len != sizeof(fix_idxs) / sizeof(fix_idxs[0])) {
+	// 	perror("Index array does not match diagnosis size");
+	// 	return NULL;
+	// }
+
+	GArray* permutation = g_array_new(false,false,sizeof(struct symbol_fix*));
+	int i;
+	for (i = 0; i < diag->len; i++) {
+		g_array_append_val(
+			// insert into new array
+			permutation,
+			// element of original array with i-th index
+			g_array_index(diag, struct symbol_fix *, fix_idxs[i])
+		);
+	}
+	return permutation;
+}
+
+/*
+ * Save diagnosis to file. 
+ * Non-zero return value indicates file I/O error.
+ */
+static void save_diagnosis(GArray *diag, char* filename)
+{
+	FILE* f = fopen(filename, "w");
+	if (!f) {
+		printf("Could not save diagnosis\n");
+		return;
+	}
+
+	int i;
+	struct symbol_fix *fix;
+	for_every_fix(diag, i, fix) {
+	// for (i = 0; i < diag_sym->len; i++) {
+		// fix = g_array_index(diag_sym, struct symbol_fix *, i);
+		
+		if (fix->type == SF_BOOLEAN)
+			fprintf(f, "%s => %s\n", fix->sym->name, tristate_get_char(fix->tri));
+		else if (fix->type == SF_NONBOOLEAN)
+			fprintf(f, "%s => %s\n", fix->sym->name, str_get(&fix->nb_val));
+		else
+			perror("NB not yet implemented.");
+	}
+	fclose(f);
+	printf("#\n#diagnosis saved to %s\n#\n", filename);
+}
+
+/*
+ * If conf_get_configname() returns a path, 
+ * return directory path to .config file;
+ * return empty string otherwise.
+ */
+static char* get_config_dir(void)
+{
+	char *config_dir = (char*) conf_get_configname();
+	// if config filename is a path
+	if (strrchr(config_dir, '/')) {
+		// drop its contents past the last slash
+		strrchr(config_dir, '/')[1] = 0;
+		return config_dir;
+	} else
+		return "";	
 }
 
 #endif
@@ -1837,7 +2416,11 @@ ConfigMainWindow::ConfigMainWindow(void)
 	QDesktopWidget *d = configApp->desktop();
 	snprintf(title, sizeof(title), "%s%s",
 		rootmenu.prompt->text,
+	#ifdef CONFIGFIX_TEST
+		" (configfix testing)"
+	#else
 		""
+	#endif
 		);
 	setWindowTitle(title);
 
@@ -2408,6 +2991,21 @@ int main(int ac, char** av)
 	fixup_rootmenu(&rootmenu);
 	conf_read(NULL);
 	//zconfdump(stdout);
+#ifdef CONFIGFIX_TEST
+	// FIXME add KCONFIG_CONFIG check
+	// int l; for (l=0;l<ac;l++)
+	// 	printf("av[%d]=%s\n",l, av[l]);
+
+	// if (ac > 1) {
+	// 	if (strcmp(av[2], "-conflict_size") == 0 
+	// 		&& av[3] && atoi(av[3]) > 0)
+	// 		conflict_size = atoi(av[3]);
+	// }
+
+
+	print_setup(name);
+	getchar();
+#endif
 
 	configSettings = new ConfigSettings();
 	configSettings->beginGroup("/kconfig/qconf");
@@ -2417,10 +3015,6 @@ int main(int ac, char** av)
 	configApp->connect(configApp, SIGNAL(lastWindowClosed()), SLOT(quit()));
 	configApp->connect(configApp, SIGNAL(aboutToQuit()), v, SLOT(saveSettings()));
 #ifdef CONFIGFIX_TEST
-	printf("Kconfig file: %s\n",name);
-	
-	if (rootmenu.prompt)
-		printf("Root menu prompt: %s\n",rootmenu.prompt->text);
 	
 	// show detailed information in config view by default
 	v->showFullView(); 
@@ -2440,17 +3034,22 @@ int main(int ac, char** av)
 	ConfigItem* item;
 	struct symbol* sym;
 
-	// collect menu and symbol statistics
-	int total=0, menuless=0, invisible=0, unknowns=0,
+	// collect statistics
+	int count=0, menuless=0, invisible=0, unknown=0,
 		symbolless=0, nonchangeable=0, promptless=0;
+
 	while (*it) {
 		item = (ConfigItem*)(*it);
-		total++;
+		count++;
 		if (!item->menu) {
 			menuless++;
 			++it;
 			continue;
 		}
+
+		if (!menu_has_prompt(item->menu))
+			promptless++;
+
 		if (!menu_is_visible(item->menu))
 			invisible++;
 		
@@ -2462,36 +3061,64 @@ int main(int ac, char** av)
 		}
 
 		if (sym_get_type(sym) == S_UNKNOWN)
-			unknowns++;
+			unknown++;
 
 		if (!sym_is_changeable(sym))
 			nonchangeable++;
 		
-		if (!sym_has_prompt(sym))
-			promptless++;
-
 		if (sym_has_prompt(sym) && !sym_is_changeable(sym))
 			conflictsView->candidate_symbols++;
+
+		//DEBUG - print choices
+		// if (sym_is_choice(sym)) {
+		// 	printf("Choice %s = %s", 
+		// 		sym_get_name(sym), sym_has_value(sym) ? sym_get_string_value(sym) : "no value");
+		// 	if (sym_has_value(sym) && sym->curr.val) {
+		// 		printf(" (value is %s)", sym_get_name((struct symbol*)sym->curr.val));
+		// 	}
+		// 	printf("\n");
+		// }
+		// if (sym_is_choice_value(sym))
+		// 	printf("Choice value %s = %s\n", 
+		// 		sym_get_name(sym), sym_get_string_value(sym));
+		//DEBUG
+
 
 		++it;
 	}
 
-	// alternative conflict candidates count by iterating symbols
-	int i, candidates=0, sym_count=0, promptless_unchangeables=0;
+	printf("\n");
+	printf("%i ConfigItems: %i menu-less, %i prompt-less, %i invisible, %i symbol-less, %i unknown type, %i non-changeable\n", 
+		count, menuless, promptless, invisible, symbolless, unknown, nonchangeable);
+	
+
+	// alternative counts by iterating symbols
+	int i, candidates=0, promptless_unchangeable=0;
+	count=0,  invisible=0, unknown=0, nonchangeable=0, promptless=0;
 	for_all_symbols(i, sym) {
-		sym_count++;
+		count++;
+
+		if (!sym_has_prompt(sym))
+			promptless++;
+		if (sym->visible == no)
+			invisible++;
+		if (!sym_is_changeable(sym))
+			nonchangeable++;
+		if (sym_get_type(sym) == S_UNKNOWN)
+			unknown++;
 		if (!sym_is_changeable(sym) && sym_has_prompt(sym))
 			candidates++;
 		if (!sym_is_changeable(sym) && !sym_has_prompt(sym))
-			promptless_unchangeables++;
+			promptless_unchangeable++;
 	}
 
-	printf("%i ConfigItems: %i menu-less, %i symbol-less, %i unknown type, %i invisible, %i non-changeable, %i prompt-less\n", 
-		total, menuless, symbolless, unknowns, invisible, nonchangeable, promptless);
-	printf("%i symbols: %i prompt-less & unchangeable \n", 
-		sym_count, promptless_unchangeables);
+	printf("%i symbols: %i prompt-less, %i invisible, %i unknown type, %i non-changeable, %i prompt-less & unchangeable\n", 
+		count, promptless, invisible, unknown, nonchangeable, promptless_unchangeable);
+	
 	printf("Conflict candidates: %i config items (%i symbols)\n", 
 		conflictsView->candidate_symbols, candidates);
+
+	initial_config = config_backup();
 #endif
 	v->show();
 	configApp->exec();

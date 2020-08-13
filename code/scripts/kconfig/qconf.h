@@ -248,10 +248,11 @@ public:
 };
 
 class ConflictsView : public QWidget {
-	ConfigLineEdit* lineEdit;
 	Q_OBJECT
 	typedef class QWidget Parent;
+	
 public:
+	ConfigLineEdit* lineEdit;
 	ConflictsView(QWidget* parent, const char *name = 0);
 	~ConflictsView(void);
 	void addSymbol(struct menu * m);
@@ -279,9 +280,9 @@ public slots:
 	void calculateFixes();
 
 // FIXME - make work with #ifdef
-//#ifdef CONFIGFIX_TEST
+// #ifdef CONFIGFIX_TEST
 	void testRandomConlict();
-//#endif
+// #endif
 
 signals:
 	void showNameChanged(bool);
@@ -436,5 +437,3 @@ public:
 protected:
     void dropEvent(QDropEvent *event);
 };
-
-GHashTable* backup_config(void);
