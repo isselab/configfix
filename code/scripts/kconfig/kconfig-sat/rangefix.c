@@ -16,8 +16,13 @@
 #define PRINT_DIAGNOSIS_FOUND true
 #define MINIMISE_DIAGNOSES false
 #define MINIMISE_UNSAT_CORE true
+#ifdef CONFIGFIX_TEST
+#define MAX_DIAGNOSES 10
+#define MAX_SECONDS 120
+#else
 #define MAX_DIAGNOSES 5
 #define MAX_SECONDS 30
+#endif
 
 static GArray *diagnoses, *diagnoses_symbol;
 
@@ -52,6 +57,10 @@ static const char * calculate_new_string_value(struct fexpr *e, GArray *diagnosi
 
 /* count assumptions, only used for debugging */
 static unsigned int nr_of_assumptions = 0, nr_of_assumptions_true = 0;
+
+#ifdef CONFIGFIX_TEST
+static bool apply_sym_fix(struct symbol_fix *fix);
+#endif
 
 /* -------------------------------------- */
 
@@ -974,6 +983,129 @@ void apply_fix(GArray *diag)
 
 	printf("Applying fixes done.\n");
 }
+
+#ifdef CONFIGFIX_TEST
+/*
+ * Apply the fixes from a diagnosis and return status.
+ */
+bool apply_fix_bool(GArray *diag)
+{
+	struct symbol_fix *fix;
+	// struct symbol *sym;
+	// unsigned int i, no_symbols_set = 0;
+	// GArray *tmp = g_array_copy(diag);
+	// while (no_symbols_set < diag->len) {
+	// 	for (i = 0; i < tmp->len; i++) {
+	// 		fix = g_array_index(tmp, struct symbol_fix *, i);
+	
+	for_all_fixes(diag, fix) {
+		if (!apply_sym_fix(fix)) {
+			return false;
+		}
+	}
+	return true;
+
+	// while (no_symbols_set < diag->len) {
+	// 	for (i = 0; i < tmp->len; i++) {
+	// 		fix = g_array_index(tmp, struct symbol_fix *, i);
+			
+	// 		/* update symbol's current value */
+	// 		sym_calc_value(fix->sym);
+			
+	// 		/* value already set? */
+	// 		if (fix->type == SF_BOOLEAN) {
+	// 			if (fix->tri == sym_get_tristate_value(fix->sym)) {
+	// 				g_array_remove_index(tmp, i--);
+	// 				no_symbols_set++;
+	// 				continue;
+	// 			}
+	// 		} else if (fix->type == SF_NONBOOLEAN) {
+	// 			if (str_get(&fix->nb_val) == sym_get_string_value(fix->sym)) {
+	// 				g_array_remove_index(tmp, i--);
+	// 				no_symbols_set++;
+	// 				continue;
+	// 			}
+	// 		} else {
+	// 			perror("Error applying fix. Value set for disallowed.");
+	// 		}
+
+				
+	// 		/* could not set value, try next */
+	// 		if (fix->type == SF_BOOLEAN) {
+	// 			if (!sym_set_tristate_value(fix->sym, fix->tri)) {
+	// 				printf("Could not set value for %s.\n", sym_get_name(fix->sym));
+	// 				continue;
+	// 			}
+	// 		} else if (fix->type == SF_NONBOOLEAN) {
+	// 			if (!sym_set_string_value(fix->sym, str_get(&fix->nb_val))) {
+	// 				printf("Could not set value for %s.\n", sym_get_name(fix->sym));
+	// 				continue;
+	// 			}
+	// 		} else {
+	// 			perror("Error applying fix. Value set for disallowed.");
+	// 		}
+
+			
+	// 		/* could set value, remove from tmp */
+	// 		if (fix->type == SF_BOOLEAN) {
+	// 			printf("%s set to %s.\n", sym_get_name(fix->sym), tristate_get_char(fix->tri));
+	// 		} else if (fix->type == SF_NONBOOLEAN) {
+	// 			printf("%s set to %s.\n", sym_get_name(fix->sym), str_get(&fix->nb_val));
+	// 		}
+			
+	// 		g_array_remove_index(tmp, i--);
+	// 		no_symbols_set++;
+	// 	}
+	// }
+
+	// printf("Applying fixes done.\n");
+}
+
+/*
+ * Try applying given symbol fix and return status.
+ */
+static bool apply_sym_fix(struct symbol_fix *fix)
+{
+	/* update symbol's current value */
+	sym_calc_value(fix->sym);
+			
+	/* how to set value depends on fix type */
+	switch (fix->type) {
+	case SF_BOOLEAN:
+		// value set?
+		if (fix->tri == sym_get_tristate_value(fix->sym))
+			return true;
+		// try setting value
+		else if (sym_set_tristate_value(fix->sym, fix->tri))
+			return true;
+		else {
+			//DEBUG
+			printf("\tCould not set value for %s.\n", sym_get_name(fix->sym));
+			//DEBUG
+			return false;
+		}; break;
+	case SF_NONBOOLEAN:
+		// value set?
+		if (str_get(&fix->nb_val) == sym_get_string_value(fix->sym))
+			return true;
+		// try setting value
+		else if (sym_set_string_value(fix->sym, str_get(&fix->nb_val)))
+			return true;
+		else {
+			//DEBUG
+			printf("\tCould not set value for %s.\n", sym_get_name(fix->sym));
+			//DEBUG
+			return false;
+		}; break;
+	case SF_DISALLOWED:
+		printf("\tError applying fix. Value set for disallowed.");
+		return false;
+	default:
+		printf("\tInvalid symbol fix type.");
+	}
+	return false;
+}
+#endif
 
 /*
  * apply the fixes from a diagnosis
