@@ -1080,7 +1080,7 @@ static bool apply_sym_fix(struct symbol_fix *fix)
 			return true;
 		else {
 			//DEBUG
-			printf("\tCould not set value for %s.\n", sym_get_name(fix->sym));
+			// printf("\tCould not set value for %s.\n", sym_get_name(fix->sym));
 			//DEBUG
 			return false;
 		}; break;
@@ -1093,7 +1093,7 @@ static bool apply_sym_fix(struct symbol_fix *fix)
 			return true;
 		else {
 			//DEBUG
-			printf("\tCould not set value for %s.\n", sym_get_name(fix->sym));
+			// printf("\tCould not set value for %s.\n", sym_get_name(fix->sym));
 			//DEBUG
 			return false;
 		}; break;

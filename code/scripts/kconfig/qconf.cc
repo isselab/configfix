@@ -79,9 +79,11 @@ static symbol_fix* get_symbol_fix(struct symbol *sym, GArray *diag);
 static const char* sym_fix_get_string_value(struct symbol_fix *sym_fix);
 static bool diag_dependencies_met(GArray *diag);
 static bool symbol_has_changed(struct symbol *sym, GHashTable *backup);
-static void print_setup(const char *name);
+// static void print_setup(const char *name);
+static void print_config_stats(void);
 static GArray* rearrange_diagnosis(GArray *diag, int fix_idxs[]);
-static void save_diagnosis(GArray *diag, char* filename);
+// static void save_diagnosis(GArray *diag, char* filename);
+static void save_diagnosis(GArray *diag, char* file_prefix, bool valid_diag);
 static char* get_config_dir(void);
 #endif
 
@@ -1492,27 +1494,6 @@ void ConflictsView::testRandomConlict(void)
 
 			// FIXME conflict path 
 
-			// construct file paths
-			// e.g. diag09
-			char diag_suffix[strlen("diagXX") + 1]; 
-			sprintf(diag_suffix, "diag%.2d", i+1);
-			printf("\nDiag suffix: %s\n", diag_suffix);
-			// e.g. diag09.txt
-			char diag_filename[
-				strlen(get_config_dir()) 
-				+ strlen(diag_suffix)
-				+ strlen(".txt") + 1];
-			sprintf(diag_filename, "%s%s.txt", get_config_dir(), diag_suffix);
-			// printf("Diagnosis filename: %s\n", diag_filename);
-			// e.g. path/to/config/sample/.config.diag09
-			char config_filename[
-				strlen(get_config_dir()) 
-				+ strlen(".config.") 
-				+ strlen(diag_suffix) + 1];
-			sprintf(config_filename, "%s.config.%s", get_config_dir(), diag_suffix);
-			printf(".config with applied diagnosis: %s\n", config_filename);
-			
-
 			// select diagnosis
 			diag = g_array_index(solution_output, GArray*, i);
 			size = diag->len;
@@ -1521,9 +1502,7 @@ void ConflictsView::testRandomConlict(void)
 			// print diagnosis info
 			printf("\n-------------------------------\nDiagnosis %i\n", i+1);
 			print_diagnosis_symbol(diag);
-			save_diagnosis(diag, diag_filename);
-			perror("perror");
-			config_compare(initial_config);
+
 			// apply the fixes 
 			printf("\nTrying to apply fixes: ");
 
@@ -1540,10 +1519,10 @@ void ConflictsView::testRandomConlict(void)
 
 			do {
 				permutation = rearrange_diagnosis(diag, fix_idxs);
-				// XXX debug
-				printf("%d\n", permutation->len);
-				print_diagnosis_symbol(permutation);
-				// XXX debug
+				// DEBUG
+				// printf("%d", permutation->len);
+				// print_diagnosis_symbol(permutation);
+				// DEBUG
 				perm_count++;
 				if (apply_fix_bool(permutation)) {
 					valid_diag = true;
@@ -1555,10 +1534,11 @@ void ConflictsView::testRandomConlict(void)
 					// dot = failed test
 					printf(".");
 					g_array_free(permutation, false);
-					conf_read(conf_get_configname());
-					// refresh menu?
-					config_compare(initial_config);
-					getchar();
+					config_reset();
+					// emit(refreshMenu());
+					if (config_compare(initial_config) != 0)
+						printf("Error: could not reset configuration\n");
+					// getchar();
 				} 
 			} while ( std::next_permutation(fix_idxs, fix_idxs+size) );
 
@@ -1568,6 +1548,13 @@ void ConflictsView::testRandomConlict(void)
 			// g_array_free(permutation, false);
 			g_clear_pointer(&permutation, g_ptr_array_unref);
 			
+			// e.g. diag09
+			char diag_prefix[strlen("diagXX") + 1]; 
+			sprintf(diag_prefix, "diag%.2d", i+1);			
+			save_diagnosis(diag, diag_prefix, valid_diag);
+
+			config_compare(initial_config);
+
 			if (!valid_diag)
 				continue;
 
@@ -1588,7 +1575,15 @@ void ConflictsView::testRandomConlict(void)
 
 			// save configuration
 			getchar();
+			// e.g. path/to/config/sample/.config.diag09
+			char config_filename[
+				strlen(get_config_dir()) 
+				+ strlen(".config.") 
+				+ strlen(diag_prefix) + 1];
+			sprintf(config_filename, "%s.config.%s", get_config_dir(), diag_prefix);
+			
 			conf_write(config_filename);
+
 			// printf("Comparing after conf_write()...\n");
 
 			// compare with latest backup
@@ -1761,7 +1756,7 @@ void ConflictsView::testRandomConlict(void)
 
 
 			// check that only symbols in the fix were changed 
-			printf("Will restore initial configuration (.config)\n");getchar();
+			printf("Will restore initial configuration\n");getchar();
 			config_reset();
 			emit(refreshMenu());
 			config_compare(initial_config);
@@ -1769,7 +1764,7 @@ void ConflictsView::testRandomConlict(void)
 		return;
 	}
 
-	printf("Will restore initial configuration (.config)\n");getchar();
+	printf("Will restore initial configuration\n");getchar();
 	config_reset();
 	emit(refreshMenu());
 	config_compare(initial_config);
@@ -1825,6 +1820,8 @@ static GHashTable* config_backup()
 
 /*
  * Compare the current configuration with given backup.
+ * Return 0 if the configuration and the backup match,
+ * otherwise return number of mismatching symbols.
  */
 static int config_compare(GHashTable *backup) 
 {
@@ -1858,21 +1855,24 @@ static int config_compare(GHashTable *backup)
 		
 		current_val = strdup(sym_get_string_value(sym));
 		if (strcmp(backup_val, current_val) != 0) {
-			printf("%s %s %s/%s has changed: %s -> %s\n", 
-				sym_is_choice(sym) ? "choice" : "", 
-				sym_type_name(sym_get_type(sym)),
-				sym_get_name(sym), sym->name, backup_val, current_val);
+			//DEBUG
+			// printf("%s %s %s/%s has changed: %s -> %s\n", 
+			// 	sym_is_choice(sym) ? "choice" : "", 
+			// 	sym_type_name(sym_get_type(sym)),
+			// 	sym_get_name(sym), sym->name, backup_val, current_val);
+			//DEBUG
 			mismatch++;
 		} else
 			match++;
 
 		free(current_val);
 	}
-	printf("Done: %i symbols compared (%i match, %i mismatch), %i UNKNOWNs ignored\n", 
-		sym_count, match, mismatch, unknowns);
+	//DEBUG
+	// printf("Done: %i symbols compared (%i match, %i mismatch), %i UNKNOWNs ignored\n", 
+	// 	sym_count, match, mismatch, unknowns);
 	
-	printf("Current configuration and backup %s\n", mismatch ? "MISMATCH" : "MATCH");		
-
+	// printf("Current configuration and backup %s\n", mismatch ? "MISMATCH" : "MATCH");		
+	//DEBUG
 	return mismatch;
 }
 
@@ -2025,11 +2025,22 @@ static GArray* rearrange_diagnosis(GArray *diag, int fix_idxs[])
 }
 
 /*
- * Save diagnosis to file. 
- * Non-zero return value indicates file I/O error.
+ * Save diagnosis using filename that combines given prefix and 
+ * diagnosis status e.g. diag02.VALID.txt or diag08.INVALID.txt.
+
  */
-static void save_diagnosis(GArray *diag, char* filename)
+static void save_diagnosis(GArray *diag, char* file_prefix, bool valid_diag)
 {
+	char filename[
+		// XXX change to conflict_dir
+		strlen(get_config_dir()) 
+		+ strlen(file_prefix)
+		+ strlen(valid_diag ? ".VALID" : ".INVALID")
+		+ strlen(".txt") + 1];
+	sprintf(filename, "%s%s%s.txt", 
+		get_config_dir(), file_prefix, 
+		valid_diag ? ".VALID" : ".INVALID");
+		
 	FILE* f = fopen(filename, "w");
 	if (!f) {
 		printf("Could not save diagnosis\n");
@@ -2050,7 +2061,7 @@ static void save_diagnosis(GArray *diag, char* filename)
 			perror("NB not yet implemented.");
 	}
 	fclose(f);
-	printf("#\n#diagnosis saved to %s\n#\n", filename);
+	printf("\n#\n#diagnosis saved to %s\n#\n", filename);
 }
 
 /*
@@ -3004,7 +3015,6 @@ int main(int ac, char** av)
 
 
 	print_setup(name);
-	getchar();
 #endif
 
 	configSettings = new ConfigSettings();
