@@ -22,6 +22,7 @@
 #include "kconfig-sat/satconf.h"
 
 #ifdef CONFIGFIX_TEST
+#include <dirent.h>
 #include <time.h>
 #include "kconfig-sat/utils.h"
 #include "kconfig-sat/rangefix.h"
@@ -85,6 +86,7 @@ static GArray* rearrange_diagnosis(GArray *diag, int fix_idxs[]);
 // static void save_diagnosis(GArray *diag, char* filename);
 static void save_diagnosis(GArray *diag, char* file_prefix, bool valid_diag);
 static char* get_config_dir(void);
+static char* get_conflict_dir(void);
 #endif
 
 ConfigSettings::ConfigSettings()
@@ -1771,6 +1773,36 @@ void ConflictsView::testRandomConlict(void)
 #endif
 }
 
+void ConflictsView::saveConflict(void)
+{
+#ifdef CONFIGFIX_TEST
+
+	// // get config path
+	// // e.g. path/to/config/sample/.config.diag09
+	// 		char config_filename[
+	// 			strlen(get_config_dir()) 
+	// 			+ strlen(".config.") 
+	// 			+ strlen(diag_prefix) + 1];
+	// 		sprintf(config_filename, "%s.config.%s", get_config_dir(), diag_prefix);
+
+	// // find next conflict number
+
+	
+
+	// for (int i = 0; i < conflictsTable->rowCount(); i++)
+	// {
+	// 	struct symbol_dvalue *tmp = (p+i);
+	// 	auto _symbol = conflictsTable->item(i,0)->text().toUtf8().data();
+	// 	struct symbol* sym = sym_find(_symbol);
+
+	// 	tmp->sym = sym;
+	// 	tmp->type = static_cast<symboldv_type>(sym->type == symbol_type::S_BOOLEAN?0:1);
+	// 	tmp->tri = string_value_to_tristate(conflictsTable->item(i,1)->text());
+	// 	g_array_append_val(wanted_symbols,tmp);
+	// }
+#endif
+}
+
 #ifdef CONFIGFIX_TEST
 /*
  * Save the current configuration (symbol values) into hash table, 
@@ -2160,13 +2192,14 @@ static void save_diagnosis(GArray *diag, char* file_prefix, bool valid_diag)
 			perror("NB not yet implemented.");
 	}
 	fclose(f);
-	printf("\n#\n#diagnosis saved to %s\n#\n", filename);
+	printf("\n#\n# diagnosis saved to %s\n#\n", filename);
 }
 
 /*
  * If conf_get_configname() returns a path, 
- * return directory path to .config file;
- * return empty string otherwise.
+ * return directory path to .config file
+ * (including the trailing slash);
+ * return "./" otherwise.
  */
 static char* get_config_dir(void)
 {
@@ -2177,9 +2210,39 @@ static char* get_config_dir(void)
 		strrchr(config_dir, '/')[1] = 0;
 		return config_dir;
 	} else
-		return "";	
+		return "./";	
 }
 
+/*
+ *
+ */
+static char* get_conflict_dir()
+{
+  
+    // open the configuration sample directory  
+	struct dirent *de;
+    DIR *dr = opendir(get_config_dir()); 
+  
+    if (dr == NULL) { 
+        printf("Could not open directory\n"); 
+        return NULL; 
+    } 
+  
+    // iterate it
+    while ((de = readdir(dr)) != NULL) 
+		// look for subdirectories 
+		if (de->d_type == DT_DIR
+			// whose name start with 'conflict'
+			&& strncmp("conflict", de->d_name, strlen("conflict")) == 0) {
+				printf("%s : %d\n", de->d_name, de->d_type); 
+				printf("%s : %d\n", 
+					strtok(de->d_name, "conflict"),
+					atoi(strtok(de->d_name, "conflict")));
+			}
+  
+    closedir(dr);     
+    return 0; 
+}
 #endif
 
 ConflictsView::~ConflictsView(void)
@@ -3139,6 +3202,9 @@ int main(int ac, char** av)
 	conflictsView->conflictsTable->resizeColumnsToContents();
 
 	print_config_stats(configView->list);
+
+	get_conflict_dir();
+	getchar();
 
 	initial_config = config_backup();
 #endif

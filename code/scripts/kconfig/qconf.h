@@ -282,6 +282,7 @@ public slots:
 // FIXME - make work with #ifdef
 // #ifdef CONFIGFIX_TEST
 	void testRandomConlict();
+	void saveConflict();
 // #endif
 
 signals:
