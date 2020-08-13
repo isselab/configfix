@@ -215,7 +215,7 @@ qconf-objs	:= images.o $(common-objs) kconfig-sat/cnf.o kconfig-sat/constraints.
 
 HOSTLDLIBS_qconf	= $(shell . $(obj)/qconf-cfg && echo $$libs && pkg-config --libs glib-2.0)
 HOSTLDLIBS_conflict_resolver	= $(shell . $(obj)/qconf-cfg && echo $$libs)
-HOSTCXXFLAGS_qconf.o	= -DCONFIGFIX_TEST $(shell . $(obj)/qconf-cfg && echo $$cflags && pkg-config --cflags glib-2.0)
+HOSTCXXFLAGS_qconf.o	= $(shell . $(obj)/qconf-cfg && echo $$cflags && pkg-config --cflags glib-2.0)
 HOSTCXXFLAGS_conflict_resolver.o	= $(shell . $(obj)/qconf-cfg && echo $$cflags)
 
 $(obj)/qconf.o: $(obj)/qconf-cfg $(obj)/qconf.moc
@@ -225,6 +225,16 @@ quiet_cmd_moc = MOC     $@
 
 $(obj)/%.moc: $(src)/%.h $(obj)/qconf-cfg
 	$(call cmd,moc)
+
+# configfix testing: 
+PHONY += randtestconfig
+
+randtestconfig: HOSTCXXFLAGS_qconf.o	+= -DCONFIGFIX_TEST -ggdb
+randtestconfig: HOSTCFLAGS_rangefix.o	+= -DCONFIGFIX_TEST -ggdb
+randtestconfig: HOSTCFLAGS_lexer.lex.o	+= -DCONFIGFIX_TEST -ggdb
+randtestconfig: HOSTCFLAGS_parser.tab.o	+= -DCONFIGFIX_TEST -ggdb
+randtestconfig: $(obj)/qconf
+	$< $(silent) $(Kconfig)
 
 # gconf: Used for the gconfig target based on GTK+
 hostprogs-y	+= gconf
