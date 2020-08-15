@@ -69,6 +69,11 @@ static inline QString qgettext(const char* str)
 }
 
 #ifdef CONFIGFIX_TEST
+// testing modes
+#define RANDOM_TESTING 1
+#define MANUAL_TESTING 2
+static int testing_mode = RANDOM_TESTING;
+
 // default conflict size, use -c N command line argument to change
 static int conflict_size = 1;
 // static char* config_path;
@@ -1080,7 +1085,7 @@ ConflictsView::ConflictsView(QWidget* parent, const char *name)
 	QAction *fixConflictsAction = new QAction("Calculate Fixes");
 	QAction *removeSymbol = new QAction("Remove Symbol");
 #ifdef CONFIGFIX_TEST
-	QAction *testConflictAction = new QAction("Test Random Conflict");
+	testConflictAction = new QAction("Test Random Conflict");
 #endif
 
 	//if you change the order of buttons here, change the code where
@@ -1107,6 +1112,7 @@ ConflictsView::ConflictsView(QWidget* parent, const char *name)
 	// no longer used anymore for now.
 	connect(fixConflictsAction, SIGNAL(triggered(bool)), SLOT(calculateFixes()));
 #ifdef CONFIGFIX_TEST
+	connect(fixConflictsAction, SIGNAL(triggered(bool)), SLOT(switchTestingMode()));
 	connect(testConflictAction, SIGNAL(triggered(bool)), SLOT(testRandomConlict()));
 #endif
 	conflictsTable = (QTableWidget*) new dropAbleView(this);
@@ -1406,6 +1412,25 @@ void ConflictsView::changeAll(void)
 	// emit(refreshMenu());
 }
 
+void ConflictsView::switchTestingMode()
+{
+/*
+ * Keeping this slot empty for 'make xconfig'
+ * since I cannot figure out how to set
+ * -DCONFIGFIX_TEST during qconf.moc compilation.
+ */
+#ifdef CONFIGFIX_TEST
+	testing_mode = MANUAL_TESTING;
+	testConflictAction->setText("Verify Fixes");
+#endif
+}
+
+/*
+ * In RANDOM_TESTING mode, generate random conflict
+ * amd calculate fixes for it.
+ * In both RANDOM_TESTING and MANUAL_TESTING mode
+ * verify fixes, if they are present.
+ */
 void ConflictsView::testRandomConlict(void)
 {
 /*
@@ -1414,66 +1439,11 @@ void ConflictsView::testRandomConlict(void)
  * -DCONFIGFIX_TEST during qconf.moc compilation.
  */
 #ifdef CONFIGFIX_TEST
-	// conflictsTable->clearContents();
 
-	// // iterate menu items
-	// QTreeWidgetItemIterator it(configList);
-	// ConfigItem* item;
-	// int i;
-	// struct symbol* sym;
-
-	// // random seed
-	// srand(time(0));
-
-	// int conflict_size = 2;
-	// int conflict_count = 0;
-
-	// while (*it) {
-	// 	item = (ConfigItem*)(*it);
-	// 	// skip items without menus or symbols
-	// 	if (!item->menu) {
-	// 		++it;
-	// 		continue;
-	// 	}
-	// 	sym = item->menu->sym;
-	// 	if (!sym) {
-	// 		++it;
-	// 		continue;
-	// 	}
-
-	// 	// consider only conflicting items
-	// 	if (sym_has_prompt(sym) && !sym_is_changeable(sym)) {
-
-	// 		// FIXME - "prefectly random selection"
-	// 		if (rand() < 1000000) {
-	// 			addSymbol(item->menu);
-	// 			// set wanted value (reverse of current)
-	// 			tristate current = sym_get_tristate_value(sym);
-	// 			tristate wanted = current == yes ? no : yes;
-	// 			conflictsTable->setItem(conflictsTable->rowCount()-1,1,
-	// 				new QTableWidgetItem(tristate_value_to_string(wanted)));
-	// 			++conflict_count;
-	// 		}
-	// 	}
-
-	// 	if (conflictsTable->rowCount() == conflict_size)
-	// 		break;
-	// 	else
-	// 		++it;
-	// }
-
-	// conflictsTable->resizeColumnsToContents();
-	// conflictsTable->repaint();
-
-	// if (conflictsTable->rowCount() == 0) {
-	// 	printf("No conflicts\n");
-	// 	return;	
-	// } else {
-	// 	printf("Conflict includes %i symbols\n", conflictsTable->rowCount());
-	// }
-
-	// calculateFixes();
-
+	if (testing_mode == RANDOM_TESTING) {
+		generateConflict();
+		calculateFixes();
+	}
 	// verify fixes
 	/*
 	 - save & reload config - should match
@@ -1538,9 +1508,11 @@ void ConflictsView::testRandomConlict(void)
 					g_array_free(permutation, false);
 					config_reset();
 					// emit(refreshMenu());
-					if (config_compare(initial_config) != 0)
+					if (config_compare(initial_config) != 0) {
 						printf("Error: could not reset configuration\n");
-					// getchar();
+						print_diagnosis_symbol(permutation);
+						getchar();
+					}
 				} 
 			} while ( std::next_permutation(fix_idxs, fix_idxs+size) );
 
@@ -1770,11 +1742,89 @@ void ConflictsView::testRandomConlict(void)
 	config_reset();
 	emit(refreshMenu());
 	config_compare(initial_config);
+
+	if (testing_mode == MANUAL_TESTING) {
+		testConflictAction->setText("Test Random Conflict");
+		testing_mode = RANDOM_TESTING;
+	}
+#endif
+}
+
+void ConflictsView::generateConflict(void)
+{
+/*
+ * Keeping this slot empty for 'make xconfig'
+ * since I cannot figure out how to set
+ * -DCONFIGFIX_TEST during qconf.moc compilation.
+ */
+#ifdef CONFIGFIX_TEST
+	conflictsTable->clearContents();
+
+	// iterate menu items
+	QTreeWidgetItemIterator it(configList);
+	ConfigItem* item;
+	int i;
+	struct symbol* sym;
+
+	// random seed
+	srand(time(0));
+
+	// int conflict_size = 2;
+	int conflict_count = 0;
+
+	while (*it) {
+		item = (ConfigItem*)(*it);
+		// skip items without menus or symbols
+		if (!item->menu) {
+			++it;
+			continue;
+		}
+		sym = item->menu->sym;
+		if (!sym) {
+			++it;
+			continue;
+		}
+
+		// consider only conflicting items
+		if (sym_has_prompt(sym) && !sym_is_changeable(sym)) {
+
+			// FIXME - "prefectly random selection"
+			if (rand() < 1000000) {
+				addSymbol(item->menu);
+				// set wanted value (reverse of current)
+				tristate current = sym_get_tristate_value(sym);
+				tristate wanted = current == yes ? no : yes;
+				conflictsTable->setItem(conflictsTable->rowCount()-1,1,
+					new QTableWidgetItem(tristate_value_to_string(wanted)));
+				++conflict_count;
+			}
+		}
+
+		if (conflictsTable->rowCount() == conflict_size)
+			break;
+		else
+			++it;
+	}
+
+	conflictsTable->resizeColumnsToContents();
+	conflictsTable->repaint();
+
+	if (conflictsTable->rowCount() == 0) {
+		printf("No conflicts\n");
+		return;	
+	} else {
+		printf("Conflict includes %i symbols\n", conflictsTable->rowCount());
+	}
 #endif
 }
 
 void ConflictsView::saveConflict(void)
 {
+/*
+ * Keeping this slot empty for 'make xconfig'
+ * since I cannot figure out how to set
+ * -DCONFIGFIX_TEST during qconf.moc compilation.
+ */
 #ifdef CONFIGFIX_TEST
 
 	// // get config path
@@ -2013,8 +2063,9 @@ static void print_setup(const char* name)
 {
 	printf("\nConfigfix testing enabled:\n");
 	printf("---------------------------\n");
-	// FIXME add CC_VERSION_TEXT and KERNELVERSION
 	printf("%-22s %s\n", "$CC:", getenv("CC"));
+	printf("%-22s %s\n", "$CC_VERSION_TEXT:", getenv("CC_VERSION_TEXT"));
+	printf("%-22s %s\n", "$KERNELVERSION:", getenv("KERNELVERSION"));
 	printf("%-22s %s\n", "$ARCH:", getenv("ARCH"));
 	printf("%-22s %s\n", "$SRCARCH:", getenv("SRCARCH"));
 	printf("%-22s %s\n", "Working directory:", getenv("PWD"));

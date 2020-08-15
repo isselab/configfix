@@ -281,7 +281,9 @@ public slots:
 
 // FIXME - make work with #ifdef
 // #ifdef CONFIGFIX_TEST
+    void switchTestingMode();
 	void testRandomConlict();
+	void generateConflict();
 	void saveConflict();
 // #endif
 
@@ -318,6 +320,8 @@ public:
 	ConfigList* configList;
 	// counter of conflict candidates: have prompt + cannot be changed
 	int candidate_symbols;
+	// "Test random conflict" | "Verify fixes" button
+	QAction *testConflictAction;
 #endif
 
 };
