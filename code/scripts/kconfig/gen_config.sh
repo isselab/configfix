@@ -89,7 +89,7 @@ chmod +x generate.sh
 mv generate.sh $CONFIG_PATH
 
 # create run.sh, substitute ARCH and SRCARCH for @
-cp run_template.sh run.sh
+cp scripts/kconfig/run_template.sh run.sh
 sed -i "s/ ARCH=@/ ARCH=$ARCH/g" run.sh
 sed -i "s/ SRCARCH=@/ SRCARCH=$SRCARCH/g" run.sh
 # move run.sh
