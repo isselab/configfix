@@ -1420,8 +1420,17 @@ void ConflictsView::switchTestingMode()
  * -DCONFIGFIX_TEST during qconf.moc compilation.
  */
 #ifdef CONFIGFIX_TEST
-	testing_mode = MANUAL_TESTING;
-	testConflictAction->setText("Verify Fixes");
+	// if (solution_output == nullptr || solution_output->len == 0) {
+		// return;
+	// }
+	/*
+	 * Switch to MANUAL_TESTING mode if solution 
+	 * for manually created conflict is found.
+	 */
+	if (solution_output != nullptr && solution_output->len > 0) {
+		testing_mode = MANUAL_TESTING;
+		testConflictAction->setText("Verify Fixes");
+	}
 #endif
 }
 
@@ -1549,7 +1558,7 @@ void ConflictsView::testRandomConlict(void)
 
 			// save configuration
 			getchar();
-			// e.g. path/to/config/sample/.config.diag09
+			// e.g. /path/to/config/sample/.config.diag09
 			char config_filename[
 				strlen(get_config_dir()) 
 				+ strlen(".config.") 
@@ -1743,6 +1752,11 @@ void ConflictsView::testRandomConlict(void)
 	emit(refreshMenu());
 	config_compare(initial_config);
 
+	/* 
+	 * If the conflict was created manually and resolved
+	 * by clicking the 'Verify Fixes' button, switch to 
+	 * RANDOM_TESTING mode.
+	 */
 	if (testing_mode == MANUAL_TESTING) {
 		testConflictAction->setText("Test Random Conflict");
 		testing_mode = RANDOM_TESTING;
@@ -2265,7 +2279,9 @@ static char* get_config_dir(void)
 }
 
 /*
- *
+ * Returns a path for saving a next conflict 
+ * for the current configuration sample.
+ * The result is dynamically allocted and must be freed.
  */
 static char* get_conflict_dir()
 {
@@ -2279,20 +2295,30 @@ static char* get_conflict_dir()
         return NULL; 
     } 
   
+	int current_conflict_num, next_conflict_num = 1;
+
     // iterate it
     while ((de = readdir(dr)) != NULL) 
 		// look for subdirectories 
 		if (de->d_type == DT_DIR
-			// whose name start with 'conflict'
-			&& strncmp("conflict", de->d_name, strlen("conflict")) == 0) {
-				printf("%s : %d\n", de->d_name, de->d_type); 
-				printf("%s : %d\n", 
-					strtok(de->d_name, "conflict"),
-					atoi(strtok(de->d_name, "conflict")));
+			// whose name start with 'conflict.'
+			&& strncmp("conflict.", de->d_name, strlen("conflict.")) == 0) 
+			{
+				char *num_string = strtok(de->d_name, "conflict.");
+				if (num_string) {
+					int current_conflict_num = atoi(num_string);
+					if (current_conflict_num >= next_conflict_num)
+						next_conflict_num = current_conflict_num + 1;
+				}
 			}
   
-    closedir(dr);     
-    return 0; 
+    closedir(dr);
+	
+	// e.g. /path/to/config/sample/conflict.05/
+	char *conflict_dir = (char*) malloc(
+		sizeof(char) * (strlen(get_config_dir()) + strlen("conflict.XX/") + 1));
+	sprintf(conflict_dir, "%sconflict.%.2d/", get_config_dir(), next_conflict_num);
+	return conflict_dir; 
 }
 #endif
 
@@ -3228,6 +3254,7 @@ int main(int ac, char** av)
 
 
 	print_setup(name);
+	printf("\nConflict dir: %s\n", get_conflict_dir());
 #endif
 
 	configSettings = new ConfigSettings();
@@ -3254,7 +3281,6 @@ int main(int ac, char** av)
 
 	print_config_stats(configView->list);
 
-	get_conflict_dir();
 	getchar();
 
 	initial_config = config_backup();

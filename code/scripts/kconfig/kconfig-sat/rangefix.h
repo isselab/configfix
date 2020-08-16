@@ -17,7 +17,7 @@ void print_diagnosis_symbol(GArray *diag_sym);
 bool apply_fix_bool(GArray *diag);
 // iterate fixes in a diagnosis with and without index
 #define for_all_fixes(diag, fix) \
-	for (int fix_idx = 0; fix_idx < diag->len; fix_idx++) for (fix = g_array_index(diag, struct symbol_fix *, fix_idx);fix;fix=NULL)
+	int fix_idx; for (fix_idx = 0; fix_idx < diag->len; fix_idx++) for (fix = g_array_index(diag, struct symbol_fix *, fix_idx);fix;fix=NULL)
 #define for_every_fix(diag, i, fix) \
 	for (i = 0; i < diag->len; i++) for (fix = g_array_index(diag, struct symbol_fix *, i);fix;fix=NULL)
 #endif
