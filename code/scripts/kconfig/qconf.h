@@ -285,6 +285,7 @@ public slots:
 	void testRandomConlict();
 	void generateConflict();
 	void saveConflict();
+	void verifyDiagnoses(const char *result_prefix);
 // #endif
 
 signals:
