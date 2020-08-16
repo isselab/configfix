@@ -1,14 +1,15 @@
 #!/usr/bin/bash 
 #
-# Lets user select target architecture, set ARCH variable,
-# and then runs 'make xconfig' to generate a random .config 
+# Lets user select target architecture, sets ARCH variable,
+# and then runs 'make randconfig' to generate a random .config 
 # for that architecture.
 # 
 # This script expects $CONFIGFIX_TEST_PATH to be set.
 # 
 # The generated .config is saved into $CONFIG_TEST_PATH/$ARCH/config.XX
-# together with generate.sh which let re-creating the same configuration
-# by re-using the KCONFIG_SEED value.
+# together with generate.sh, which let re-creating the same configuration
+# by re-using the KCONFIG_SEED value, and run.sh, which allows starting
+# xconfig with the generated .config.
 # 
 
 # check if $CONFIGFIX_TEST_PATH is set
@@ -17,15 +18,7 @@ if [ -z ${CONFIGFIX_TEST_PATH} ]; then
     exit
 fi
 
-# create run.sh
-# set variables that Kconfig model depends on, and which
-# are usually set in Makefiles before Kconfig is parsed
-# CC = 
-# CC_VERSION_TEXT = $(CC) --version 2>/dev/null | head -n 1
-
-# unset variables
-
-# Select architecture
+# select architecture
 echo "Select target architecture:"
 select CHOICE in \
 "Alpha" "ARC" "ARM 32-bit" "ARM 64-bit" "TI TMS320C6x" "C-SKY" \
