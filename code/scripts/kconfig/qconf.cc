@@ -74,10 +74,16 @@ static inline QString qgettext(const char* str)
 #define MANUAL_TESTING 2
 static int testing_mode = RANDOM_TESTING;
 
+#define RESULTS_FILE "results.csv"
+
 // default conflict size, use -c N command line argument to change
 static int conflict_size = 1;
-// static char* config_path;
+// result string to be written to results.csv
+static gstr result_string = str_new();
+static void result_append(char *str);
+
 static GHashTable* initial_config;
+static bool sym_has_conflict(struct symbol *sym);
 static GHashTable* config_backup(void);
 static int config_compare(GHashTable *backup);
 static void config_reset(void);
@@ -1449,10 +1455,19 @@ void ConflictsView::testRandomConlict(void)
  */
 #ifdef CONFIGFIX_TEST
 
+	// RANDOM_TESTING - generate and resolve random conflicts
 	if (testing_mode == RANDOM_TESTING) {
+
 		generateConflict();
+		if(conflictsTable->rowCount() == 0) {
+			printf("Conflicts table is empty\n");
+			return;
+		}
+		saveConflict();
 		calculateFixes();
 	}
+
+	// both RANDOM_TESTING and MANUAL_TESTING - verify fixes
 	// verify fixes
 	/*
 	 - save & reload config - should match
@@ -1760,7 +1775,8 @@ void ConflictsView::testRandomConlict(void)
 	if (testing_mode == MANUAL_TESTING) {
 		testConflictAction->setText("Test Random Conflict");
 		testing_mode = RANDOM_TESTING;
-	}
+		// print result string to screen
+	} 
 #endif
 }
 
@@ -1774,50 +1790,56 @@ void ConflictsView::generateConflict(void)
 #ifdef CONFIGFIX_TEST
 	conflictsTable->clearContents();
 
-	// iterate menu items
-	QTreeWidgetItemIterator it(configList);
-	ConfigItem* item;
-	int i;
-	struct symbol* sym;
+
+	// int i;
 
 	// random seed
 	srand(time(0));
 
 	// int conflict_size = 2;
-	int conflict_count = 0;
+	// int conflict_count = 0;
 
-	while (*it) {
-		item = (ConfigItem*)(*it);
-		// skip items without menus or symbols
-		if (!item->menu) {
-			++it;
-			continue;
-		}
-		sym = item->menu->sym;
-		if (!sym) {
-			++it;
-			continue;
-		}
+	while (conflictsTable->rowCount() < conflict_size) 
+	{
+		// iterate menu items
+		QTreeWidgetItemIterator it(configList);
+		ConfigItem* item;
+		struct symbol* sym;
 
-		// consider only conflicting items
-		if (sym_has_prompt(sym) && !sym_is_changeable(sym)) {
-
-			// FIXME - "prefectly random selection"
-			if (rand() < 1000000) {
-				addSymbol(item->menu);
-				// set wanted value (reverse of current)
-				tristate current = sym_get_tristate_value(sym);
-				tristate wanted = current == yes ? no : yes;
-				conflictsTable->setItem(conflictsTable->rowCount()-1,1,
-					new QTableWidgetItem(tristate_value_to_string(wanted)));
-				++conflict_count;
+		while (*it) 
+		{
+			item = (ConfigItem*)(*it);
+			// skip items without menus or symbols
+			if (!item->menu) {
+				++it;
+				continue;
 			}
-		}
+			sym = item->menu->sym;
+			if (!sym) {
+				++it;
+				continue;
+			}
 
-		if (conflictsTable->rowCount() == conflict_size)
-			break;
-		else
-			++it;
+			// consider only conflicting items
+			if (sym_has_conflict(sym)) { //prompt(sym) && !sym_is_changeable(sym)) {
+
+				// FIXME - "prefectly random selection"
+				if (rand() < 1000000) {
+					addSymbol(item->menu);
+					// set wanted value (reverse of current)
+					tristate current = sym_get_tristate_value(sym);
+					tristate wanted = current == yes ? no : yes;
+					conflictsTable->setItem(conflictsTable->rowCount()-1,1,
+						new QTableWidgetItem(tristate_value_to_string(wanted)));
+					// ++conflict_count;
+				}
+			}
+
+			if (conflictsTable->rowCount() == conflict_size)
+				break;
+			else
+				++it;
+		}
 	}
 
 	conflictsTable->resizeColumnsToContents();
@@ -1840,30 +1862,54 @@ void ConflictsView::saveConflict(void)
  * -DCONFIGFIX_TEST during qconf.moc compilation.
  */
 #ifdef CONFIGFIX_TEST
-
-	// // get config path
-	// // e.g. path/to/config/sample/.config.diag09
-	// 		char config_filename[
-	// 			strlen(get_config_dir()) 
-	// 			+ strlen(".config.") 
-	// 			+ strlen(diag_prefix) + 1];
-	// 		sprintf(config_filename, "%s.config.%s", get_config_dir(), diag_prefix);
-
-	// // find next conflict number
-
 	
+	// create directory
+	char *conflict_dir = get_conflict_dir();
+	QDir().mkpath(conflict_dir);
 
-	// for (int i = 0; i < conflictsTable->rowCount(); i++)
-	// {
-	// 	struct symbol_dvalue *tmp = (p+i);
-	// 	auto _symbol = conflictsTable->item(i,0)->text().toUtf8().data();
-	// 	struct symbol* sym = sym_find(_symbol);
+	// construct filename
+	char filename[
+		strlen(conflict_dir) 
+	    + strlen("conflict.txt")  + 1];
+	sprintf(filename, "%sconflict.txt", conflict_dir);
+	free(conflict_dir);
 
-	// 	tmp->sym = sym;
-	// 	tmp->type = static_cast<symboldv_type>(sym->type == symbol_type::S_BOOLEAN?0:1);
-	// 	tmp->tri = string_value_to_tristate(conflictsTable->item(i,1)->text());
-	// 	g_array_append_val(wanted_symbols,tmp);
-	// }
+    FILE* f = fopen(filename, "w");
+    if(!f) {
+        printf("Error: could not save conflict\n");
+		return;
+    }
+
+	// compare conlict table with conflict_size
+	if (conflictsTable->rowCount() != conflict_size) 
+		printf("Warning: conlicts table row count and conflict_size parameter mismatch");
+
+	// iterate conflicts table, write symbols to file
+	for (int i = 0; i < conflictsTable->rowCount(); i++)
+	{
+		auto _symbol = conflictsTable->item(i,0)->text().toUtf8().data();
+		struct symbol* sym = sym_find(_symbol);
+
+		if (!sym) {
+			printf("Error: conflict symbol %s not found\n", _symbol);
+			return;
+		} else if (!sym->name) {
+			printf("Error: conflict symbol %s not found\n", _symbol);
+			return;
+		}
+
+		fprintf(f, "%s => %s\n", 
+			sym->name, 
+			tristate_get_char(string_value_to_tristate(
+				conflictsTable->item(i,1)->text())));
+	}
+	
+	// col.3 - conflict filename
+	result_append(filename);
+
+	fclose(f);
+	printf("\n#\n# conflict saved to %s\n#\n\n", filename);
+
 #endif
 }
 
@@ -2142,7 +2188,7 @@ static void print_config_stats(ConfigList *list)
 		if (!sym_is_changeable(sym))
 			nonchangeable++;
 		
-		if (sym_has_prompt(sym) && !sym_is_changeable(sym))
+		if (sym_has_conflict(sym)) //(sym_has_prompt(sym) && !sym_is_changeable(sym))
 			// conflictsView->candidate_symbols++;
 			conf_item_candidates++;
 
@@ -2181,7 +2227,7 @@ static void print_config_stats(ConfigList *list)
 			nonchangeable++;
 		if (sym_get_type(sym) == S_UNKNOWN)
 			unknown++;
-		if (!sym_is_changeable(sym) && sym_has_prompt(sym))
+		if (sym_has_conflict(sym)) //(!sym_is_changeable(sym) && sym_has_prompt(sym))
 			sym_candidates++;
 		if (!sym_is_changeable(sym) && !sym_has_prompt(sym))
 			promptless_unchangeable++;
@@ -2227,19 +2273,21 @@ static GArray* rearrange_diagnosis(GArray *diag, int fix_idxs[])
  */
 static void save_diagnosis(GArray *diag, char* file_prefix, bool valid_diag)
 {
+	char *conflict_dir = get_conflict_dir();
 	char filename[
 		// XXX change to conflict_dir
-		strlen(get_config_dir()) 
+		strlen(conflict_dir) 
 		+ strlen(file_prefix)
 		+ strlen(valid_diag ? ".VALID" : ".INVALID")
 		+ strlen(".txt") + 1];
 	sprintf(filename, "%s%s%s.txt", 
-		get_config_dir(), file_prefix, 
+		conflict_dir, file_prefix, 
 		valid_diag ? ".VALID" : ".INVALID");
-		
+	free(conflict_dir);
+
 	FILE* f = fopen(filename, "w");
 	if (!f) {
-		printf("Could not save diagnosis\n");
+		printf("Error: could not save diagnosis\n");
 		return;
 	}
 
@@ -2320,7 +2368,35 @@ static char* get_conflict_dir()
 	sprintf(conflict_dir, "%sconflict.%.2d/", get_config_dir(), next_conflict_num);
 	return conflict_dir; 
 }
-#endif
+
+/*
+ * Append given string and a semicolumn to result_string.
+ */
+static void result_append(char *s) 
+{
+	if (str_get(&result_string)) {
+		str_append(&result_string, s);
+		str_append(&result_string, ";");	
+	} else
+		printf("Warning: result string is empty");
+}
+
+/*
+ * Return 'true' if the symbol conflicts with the current
+ * configuration, 'false' otherwise.
+ */
+static bool sym_has_conflict(struct symbol *sym)
+{
+	// symbol is conflicting if it
+	return (
+		// has prompt (visible to user)
+		sym_has_prompt(sym) && 
+		// cannot be changed
+		!sym_is_changeable(sym) && 
+		// is not 'choice' (choice values should be used instead)
+		!sym_is_choice(sym));
+}
+#endif //CONFIGFIX_TEST
 
 ConflictsView::~ConflictsView(void)
 {
