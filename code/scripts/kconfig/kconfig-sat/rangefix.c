@@ -18,7 +18,7 @@
 #define MINIMISE_UNSAT_CORE true
 #ifdef CONFIGFIX_TEST
 #define MAX_DIAGNOSES 10
-#define MAX_SECONDS 120
+#define MAX_SECONDS 300
 #else
 #define MAX_DIAGNOSES 5
 #define MAX_SECONDS 30
@@ -987,16 +987,11 @@ void apply_fix(GArray *diag)
 #ifdef CONFIGFIX_TEST
 /*
  * Apply the fixes from a diagnosis and return status.
+ * Return 'false' as soon as a symbol value cannot be set.
  */
 bool apply_fix_bool(GArray *diag)
 {
 	struct symbol_fix *fix;
-	// struct symbol *sym;
-	// unsigned int i, no_symbols_set = 0;
-	// GArray *tmp = g_array_copy(diag);
-	// while (no_symbols_set < diag->len) {
-	// 	for (i = 0; i < tmp->len; i++) {
-	// 		fix = g_array_index(tmp, struct symbol_fix *, i);
 	
 	for_all_fixes(diag, fix) {
 		if (!apply_sym_fix(fix)) {
@@ -1004,61 +999,6 @@ bool apply_fix_bool(GArray *diag)
 		}
 	}
 	return true;
-
-	// while (no_symbols_set < diag->len) {
-	// 	for (i = 0; i < tmp->len; i++) {
-	// 		fix = g_array_index(tmp, struct symbol_fix *, i);
-			
-	// 		/* update symbol's current value */
-	// 		sym_calc_value(fix->sym);
-			
-	// 		/* value already set? */
-	// 		if (fix->type == SF_BOOLEAN) {
-	// 			if (fix->tri == sym_get_tristate_value(fix->sym)) {
-	// 				g_array_remove_index(tmp, i--);
-	// 				no_symbols_set++;
-	// 				continue;
-	// 			}
-	// 		} else if (fix->type == SF_NONBOOLEAN) {
-	// 			if (str_get(&fix->nb_val) == sym_get_string_value(fix->sym)) {
-	// 				g_array_remove_index(tmp, i--);
-	// 				no_symbols_set++;
-	// 				continue;
-	// 			}
-	// 		} else {
-	// 			perror("Error applying fix. Value set for disallowed.");
-	// 		}
-
-				
-	// 		/* could not set value, try next */
-	// 		if (fix->type == SF_BOOLEAN) {
-	// 			if (!sym_set_tristate_value(fix->sym, fix->tri)) {
-	// 				printf("Could not set value for %s.\n", sym_get_name(fix->sym));
-	// 				continue;
-	// 			}
-	// 		} else if (fix->type == SF_NONBOOLEAN) {
-	// 			if (!sym_set_string_value(fix->sym, str_get(&fix->nb_val))) {
-	// 				printf("Could not set value for %s.\n", sym_get_name(fix->sym));
-	// 				continue;
-	// 			}
-	// 		} else {
-	// 			perror("Error applying fix. Value set for disallowed.");
-	// 		}
-
-			
-	// 		/* could set value, remove from tmp */
-	// 		if (fix->type == SF_BOOLEAN) {
-	// 			printf("%s set to %s.\n", sym_get_name(fix->sym), tristate_get_char(fix->tri));
-	// 		} else if (fix->type == SF_NONBOOLEAN) {
-	// 			printf("%s set to %s.\n", sym_get_name(fix->sym), str_get(&fix->nb_val));
-	// 		}
-			
-	// 		g_array_remove_index(tmp, i--);
-	// 		no_symbols_set++;
-	// 	}
-	// }
-
-	// printf("Applying fixes done.\n");
 }
 
 /*
