@@ -79,8 +79,9 @@ static int testing_mode = RANDOM_TESTING;
 
 // default conflict size, use -c N command line argument to change
 static int conflict_size = 1;
+static char* conflict_dir;
 // result string to be written to results.csv
-static gstr result_string;
+static gstr result_string = str_new();
 static void append_result(char *str);
 static void output_result();
 
@@ -1492,7 +1493,7 @@ void ConflictsView::testRandomConlict(void)
 	}
 
 	//DEBUG
-	// printf("\n--------------\nResult prefix\n--------------\n%s\n", str_get(&result_string));
+	printf("\n--------------\nResult prefix\n--------------\n%s\n", str_get(&result_string));
 	//DEBUG
 
 	// output result and return if no solution found
@@ -1612,7 +1613,7 @@ void ConflictsView::saveConflict(void)
 #ifdef CONFIGFIX_TEST
 	
 	// create directory
-	char *conflict_dir = get_conflict_dir();
+	// char *conflict_dir = get_conflict_dir();
 	QDir().mkpath(conflict_dir);
 
 	// construct filename
@@ -1620,7 +1621,7 @@ void ConflictsView::saveConflict(void)
 		strlen(conflict_dir) 
 	    + strlen("conflict.txt")  + 1];
 	sprintf(filename, "%sconflict.txt", conflict_dir);
-	free(conflict_dir);
+	// free(conflict_dir);
 
     FILE* f = fopen(filename, "w");
     if(!f) {
@@ -1695,8 +1696,9 @@ void ConflictsView::verifyDiagnoses(const char *result_prefix) // const char*?
 		
 		// reset configuration
 		printf("Resetting configuration...\n");
+		emit(refreshMenu());
 		config_reset();
-		// emit(refreshMenu());
+		emit(refreshMenu());
 		if (config_compare(initial_config) != 0)
 			printf("Error: configuration and backup mismatch\n");
 		// getchar();
@@ -1773,8 +1775,6 @@ static bool verify_diagnosis(int i, const char *result_prefix, GArray *diag)
 			//DEBUG
 			// config_compare(initial_config);
 			//DEBUG
-			// dot = failed test
-			printf(".");
 			config_reset();
 			// emit(refreshMenu());
 			if (config_compare(initial_config) != 0) {
@@ -1783,6 +1783,9 @@ static bool verify_diagnosis(int i, const char *result_prefix, GArray *diag)
 				ERR_RESET = true;
 				break;
 			}
+			// dot = failed test
+			printf(".");
+
 			g_array_free(permutation, false);
 		} 
 	} while ( std::next_permutation(fix_idxs, fix_idxs+size) );
@@ -1818,11 +1821,11 @@ static bool verify_diagnosis(int i, const char *result_prefix, GArray *diag)
 
 	// filename e.g. /path/to/config/sample/.config.diag09
 	char config_filename[
-		strlen(get_conflict_dir()) 
+		strlen(conflict_dir)//strlen(get_conflict_dir()) 
 		+ strlen(".config.") 
 		+ strlen(diag_prefix) + 1];
 
-	sprintf(config_filename, "%s.config.%s", get_conflict_dir(), diag_prefix);
+	sprintf(config_filename, "%s.config.%s", conflict_dir, diag_prefix); //get_conflict_dir
 
 	// save configuration, make backup		
 	conf_write(config_filename);
@@ -2155,7 +2158,7 @@ static int config_compare(GHashTable *backup)
  */
 static void config_reset(void)
 {
-	conf_write(".config.temp");
+	// conf_write(".config.temp"); //XXX
 	conf_read(conf_get_configname());
 }
 
@@ -2403,7 +2406,7 @@ static GArray* rearrange_diagnosis(GArray *diag, int fix_idxs[])
  */
 static void save_diagnosis(GArray *diag, char* file_prefix, bool valid_diag)
 {
-	char *conflict_dir = get_conflict_dir();
+	// char *conflict_dir = get_conflict_dir();
 	char filename[
 		strlen(conflict_dir) 
 		+ strlen(file_prefix)
@@ -2413,7 +2416,7 @@ static void save_diagnosis(GArray *diag, char* file_prefix, bool valid_diag)
 		conflict_dir, file_prefix, 
 		valid_diag ? ".VALID" : ".INVALID");
 	printf("Conflict directory: %s\n", conflict_dir);
-	free(conflict_dir);
+	// free(conflict_dir);
 
 //DEBUG
 	// construct filename
@@ -2468,12 +2471,12 @@ static void save_diag_2(GArray *diag, char* file_prefix, bool valid_diag)
 	if (!configfix_path)
 		configfix_path = "";
 		// (char*) getenv("CONFIGFIX_PATH") : "";
-	char *conflict_dir = get_conflict_dir();
+	// char *conflict_dir = get_conflict_dir();
 	char pathname[
 		strlen(configfix_path)
 		+ strlen(conflict_dir) + 1];
 	sprintf(pathname, "%s%s", configfix_path, conflict_dir);
-	free(conflict_dir);
+	// free(conflict_dir);
 
 	QDir().mkpath(pathname);
 
@@ -2618,7 +2621,7 @@ static void output_result()
 		fprintf(f, "%s\n", str_get(&result_string));
 		fclose(f);
 	} else
-		printf("\nResult string:\n----------------\n%s\n", str_get(&result_string));
+		;// printf("\nResult string:\n----------------\n%s\n", str_get(&result_string));
 
 	str_free(&result_string);
 
@@ -3572,6 +3575,8 @@ int main(int ac, char** av)
 	// }
 
 	print_setup(name);
+	conflict_dir = get_conflict_dir();
+	printf("\nConflict directory: %s\n", conflict_dir);
 #endif
 
 	configSettings = new ConfigSettings();
