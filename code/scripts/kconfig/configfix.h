@@ -1,5 +1,10 @@
-#ifndef SATCONF_H
-#define SATCONF_H
+/* SPDX-License-Identifier: GPL-2.0 */
+/*
+ * Copyright (C) 2020 Patrick Franz <patfra71@gmail.com>
+ */
+
+#ifndef CONFIGFIX_H
+#define CONFIGFIX_H
 
 /* make functions accessible from xconfig */
 #ifdef __cplusplus
@@ -8,7 +13,7 @@ extern "C" {
 
 /* include internal definitions */
 #define LKC_DIRECT_LINK
-#include "../lkc.h"
+#include "lkc.h"
 
 
 /* include glib */
@@ -16,18 +21,17 @@ extern "C" {
 
 
 /* include own definitions */
-#include "defs.h"
+#include "cf_defs.h"
 
 
 /* include other header files needed */
 #include "picosat.h"
-#include "cnf.h"
-#include "constraints.h"
-#include "fexpr.h"
-#include "print.h"
-#include "rangefix.h"
-#include "satutils.h"
-#include "utils.h"
+#include "cf_constraints.h"
+#include "cf_fexpr.h"
+#include "cf_print.h"
+#include "cf_rangefix.h"
+#include "cf_satutils.h"
+#include "cf_utils.h"
 
 
 /* external functions */

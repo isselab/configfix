@@ -1,3 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/*
+ * Copyright (C) 2020 Patrick Franz <patfra71@gmail.com>
+ */
+
 #define _GNU_SOURCE
 #include <assert.h>
 #include <locale.h>
@@ -9,7 +14,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "satconf.h"
+#include "configfix.h"
 
 #define KCR_CMP false
 #define DEBUG_FUN false
@@ -77,7 +82,6 @@ void get_constraints(void)
 		
 		if (!sym_is_boolean(sym)) continue;
 
-
 		/* build tristate constraints */
 		if (sym->type == S_TRISTATE)
 			build_tristate_constraint_clause(sym);
@@ -101,7 +105,6 @@ void get_constraints(void)
 				add_dependencies_bool_kcr(sym);
 		}
 		
-				
 		/* build constraints for choice prompts */
 		if (sym_is_choice(sym))
 			add_choice_prompt_cond(sym);
@@ -1049,4 +1052,29 @@ static long long sym_get_range_val(struct symbol *sym, int base)
 		break;
 	}
 	return strtoll(sym->curr.val, NULL, base);
+}
+
+/*
+ * count the number of all constraints
+ */
+unsigned int count_counstraints(void)
+{
+	unsigned int i, c = 0;
+	struct symbol *sym;
+	for_all_symbols(i, sym) {
+		if (sym->constraints->arr)
+			c += sym->constraints->arr->len;
+	}
+	
+	return c;
+}
+
+/*
+ * add a constraint for a symbol
+ */
+void sym_add_constraint(struct symbol *sym, struct fexpr *constraint)
+{
+	if (!constraint) return;
+	
+	g_array_append_val(sym->constraints->arr, constraint);
 }

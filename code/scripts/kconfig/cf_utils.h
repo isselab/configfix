@@ -1,5 +1,10 @@
-#ifndef UTILS_H
-#define UTILS_H
+/* SPDX-License-Identifier: GPL-2.0 */
+/*
+ * Copyright (C) 2020 Patrick Franz <patfra71@gmail.com>
+ */
+
+#ifndef CF_UTILS_H
+#define CF_UTILS_H
 
 /* parse Kconfig-file and read .config */
 void init_config (const char *Kconfig_file);
@@ -14,22 +19,8 @@ void assign_sat_variables(void);
 /* create True/False constants */
 void create_constants(void);
 
-
-/* create a fexpr */
-struct fexpr * create_fexpr(int satval, enum fexpr_type type, char *name);
-
 /* create a temporary SAT-variable */
 struct fexpr * create_tmpsatvar(void);
-
-/* build a CNF clause with the SAT-variables given */
-struct cnf_clause * build_cnf_clause(struct gstr *reason, int num, ...);
-
-/* create a struct for a CNF clause */
-struct cnf_clause * create_cnf_clause_struct(void);
-
-/* add a literal to a CNF-clause */
-void add_literal_to_clause(struct cnf_clause *cl, int val);
-
 
 /* return a temporary SAT variable as string */
 char * get_tmp_var_as_char(int i);
@@ -79,12 +70,6 @@ struct fexpr * prop_get_condition(struct property *prop);
 
 /* return the name of the symbol */
 char * sym_get_name(struct symbol *sym);
-
-/* add a constraint for a symbol */
-void sym_add_constraint(struct symbol *sym, struct fexpr *constraint);
-
-/* count the number of all constraints */
-unsigned int count_counstraints(void);
 
 /* check whether symbol is to be changed */
 bool sym_is_sdv(GArray *arr, struct symbol *sym);

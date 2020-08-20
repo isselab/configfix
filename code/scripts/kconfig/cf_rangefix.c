@@ -1,3 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/*
+ * Copyright (C) 2020 Patrick Franz <patfra71@gmail.com>
+ */
+
 #define _GNU_SOURCE
 #include <assert.h>
 #include <locale.h>
@@ -9,7 +14,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "satconf.h"
+#include "configfix.h"
 
 #define MAX_DIAGNOSES 3
 #define MAX_SECONDS 30
@@ -65,7 +70,7 @@ static unsigned int nr_of_assumptions = 0, nr_of_assumptions_true = 0;
 
 /* -------------------------------------- */
 
-GArray * rangefix_init(PicoSAT *pico)
+GArray * rangefix_run(PicoSAT *pico)
 {
 	printf("Starting RangeFix...\n");
 	printf("Generating diagnoses...");
@@ -92,8 +97,6 @@ GArray * rangefix_init(PicoSAT *pico)
 	}
 	
 	/* convert diagnoses of fexpr to diagnoses of symbols */
-	
-	
 	if (MINIMISE_DIAGNOSES)
 		diagnoses_symbol = minimise_diagnoses(pico, diagnoses);
 	else
@@ -1492,7 +1495,12 @@ void apply_fix(GArray *diag)
 {
 	struct symbol_fix *fix;
 	unsigned int i, no_symbols_set = 0, iterations = 0;
-	GArray *tmp = g_array_copy(diag);
+// 	GArray *tmp = g_array_copy(diag);
+	GArray *tmp = g_array_new(false, false, sizeof(struct symbol_fix *));
+	for (i = 0; i < diag->len; i++) {
+		fix = g_array_index(diag, struct symbol_fix *, i);
+		g_array_append_val(tmp, fix);
+	}
 
 	
 	printf("\nTrying to apply fixes now...\n");

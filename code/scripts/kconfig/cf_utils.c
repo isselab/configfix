@@ -1,3 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/*
+ * Copyright (C) 2020 Patrick Franz <patfra71@gmail.com>
+ */
+
 #define _GNU_SOURCE
 #include <assert.h>
 #include <locale.h>
@@ -9,7 +14,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "satconf.h"
+#include "configfix.h"
 
 static struct k_expr * gcc_version_eval(struct expr *e);
 static struct k_expr * expr_eval_unequal_bool(struct expr *e);
@@ -24,11 +29,11 @@ void init_config(const char *Kconfig_file)
 }
 
 /*
- * initialize satmap and cnf_clauses
+ * initialize satmap and cnf_clauses_map
  */
 void init_data(void)
 {
-	/* initialize array with all CNF clauses */
+	/* initialize map with all CNF clauses */
 	cnf_clauses_map = g_hash_table_new_full(
 		g_int_hash, g_int_equal, //< This is an integer hash.
 		free, //< Call "free" on the key (made with "malloc").
@@ -79,31 +84,11 @@ void create_constants(void)
 	printf("Creating constants...");
 	
 	/* create TRUE and FALSE constants */
-	const_false = malloc(sizeof(struct fexpr));
-	const_false->name = str_new();
-	str_append(&const_false->name, "0");
-	const_false->type = FE_FALSE;
-	const_false->satval = sat_variable_nr++;
+	const_false = fexpr_create(sat_variable_nr++, FE_FALSE, "0");
 	g_hash_table_insert(satmap, &const_false->satval, const_false);
-	
-	struct gstr tmp1 = str_new();
-	str_append(&tmp1, "(#): False constant");
-	
-	// TODO
-// 	build_cnf_clause(&tmp1, 1, -const_false->satval);
 
-	
-	const_true = malloc(sizeof(struct fexpr));
-	const_true->name = str_new();
-	str_append(&const_true->name, "1");
-	const_true->type = FE_TRUE;
-	const_true->satval = sat_variable_nr++;
+	const_true = fexpr_create(sat_variable_nr++, FE_TRUE, "1");
 	g_hash_table_insert(satmap, &const_true->satval, const_true);
-	
-	struct gstr tmp2 = str_new();
-	str_append(&tmp2, "(#): True constant");
-// 	build_cnf_clause(&tmp2, 1, const_true->satval);
-	
 	
 	/* add fexpr of constants to tristate constants */
 	symbol_yes.fexpr_y = const_true;
@@ -116,15 +101,15 @@ void create_constants(void)
 	symbol_no.fexpr_m = const_false;
 	
 	/* create symbols yes/mod/no as fexpr */
-	symbol_yes_fexpr = create_fexpr(0, FE_SYMBOL, "y");
+	symbol_yes_fexpr = fexpr_create(0, FE_SYMBOL, "y");
 	symbol_yes_fexpr->sym = &symbol_yes;
 	symbol_yes_fexpr->tri = yes;
 	
-	symbol_mod_fexpr = create_fexpr(0, FE_SYMBOL, "m");
+	symbol_mod_fexpr = fexpr_create(0, FE_SYMBOL, "m");
 	symbol_mod_fexpr->sym = &symbol_mod;
 	symbol_mod_fexpr->tri = mod;
 	
-	symbol_no_fexpr = create_fexpr(0, FE_SYMBOL, "n");
+	symbol_no_fexpr = fexpr_create(0, FE_SYMBOL, "n");
 	symbol_no_fexpr->sym = &symbol_no;
 	symbol_no_fexpr->tri = no;
 	
@@ -132,25 +117,11 @@ void create_constants(void)
 }
 
 /*
- *  create a fexpr
- */
-struct fexpr * create_fexpr(int satval, enum fexpr_type type, char* name)
-{
-	struct fexpr *e = malloc(sizeof(struct fexpr));
-	e->satval = satval;
-	e->type = type;
-	e->name = str_new();
-	str_append(&e->name, name);
-	
-	return e;
-}
-
-/*
  * create a temporary SAT-variable
  */
 struct fexpr * create_tmpsatvar(void)
 {
-	struct fexpr *t = create_fexpr(sat_variable_nr++, FE_TMPSATVAR, "");
+	struct fexpr *t = fexpr_create(sat_variable_nr++, FE_TMPSATVAR, "");
 	str_append(&t->name, get_tmp_var_as_char(tmp_variable_nr++));
 	/* add it to satmap */
 	g_hash_table_insert(satmap, &t->satval, t);
@@ -450,31 +421,6 @@ char * sym_get_name(struct symbol *sym)
 	} else {
 		return sym->name;
 	}
-}
-
-/*
- * add a constraint for a symbol
- */
-void sym_add_constraint(struct symbol *sym, struct fexpr *constraint)
-{
-	if (!constraint) return;
-	
-	g_array_append_val(sym->constraints->arr, constraint);
-}
-
-/*
- * count the number of all constraints
- */
-unsigned int count_counstraints(void)
-{
-	unsigned int i, c = 0;
-	struct symbol *sym;
-	for_all_symbols(i, sym) {
-		if (sym->constraints->arr)
-			c += sym->constraints->arr->len;
-	}
-	
-	return c;
 }
 
 /* 

@@ -1,3 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/*
+ * Copyright (C) 2020 Patrick Franz <patfra71@gmail.com>
+ */
+
 #define _GNU_SOURCE
 #include <assert.h>
 #include <locale.h>
@@ -9,12 +14,27 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "satconf.h"
+#include "configfix.h"
 
 static void create_fexpr_bool(struct symbol *sym);
 static void create_fexpr_nonbool(struct symbol *sym);
 static void create_fexpr_unknown(struct symbol *sym);
 static void create_fexpr_choice(struct symbol *sym);
+
+
+/*
+ *  create a fexpr
+ */
+struct fexpr * fexpr_create(int satval, enum fexpr_type type, char* name)
+{
+	struct fexpr *e = malloc(sizeof(struct fexpr));
+	e->satval = satval;
+	e->type = type;
+	e->name = str_new();
+	str_append(&e->name, name);
+	
+	return e;
+}
 
 /*
  * create the fexpr for a symbol
@@ -37,7 +57,7 @@ void sym_create_fexpr(struct symbol *sym)
 static void create_fexpr_selected(struct symbol *sym)
 {
 	/* fexpr_sel_y */
-	struct fexpr *fexpr_sel_y = create_fexpr(sat_variable_nr++, FE_SELECT, sym->name);
+	struct fexpr *fexpr_sel_y = fexpr_create(sat_variable_nr++, FE_SELECT, sym->name);
 	str_append(&fexpr_sel_y->name, "_sel_y");
 	fexpr_sel_y->sym = sym;
 	/* add it to satmap */
@@ -47,7 +67,7 @@ static void create_fexpr_selected(struct symbol *sym)
 	
 	/* fexpr_sel_m */
 	if (sym->type == S_BOOLEAN) return;
-	struct fexpr *fexpr_sel_m = create_fexpr(sat_variable_nr++, FE_SELECT, sym->name);
+	struct fexpr *fexpr_sel_m = fexpr_create(sat_variable_nr++, FE_SELECT, sym->name);
 	str_append(&fexpr_sel_m->name, "_sel_m");
 	fexpr_sel_m->sym = sym;
 	/* add it to satmap */
@@ -61,7 +81,7 @@ static void create_fexpr_selected(struct symbol *sym)
  */
 static void create_fexpr_bool(struct symbol *sym)
 {
-	struct fexpr *fexpr_y = create_fexpr(sat_variable_nr++, FE_SYMBOL, sym->name);
+	struct fexpr *fexpr_y = fexpr_create(sat_variable_nr++, FE_SYMBOL, sym->name);
 	fexpr_y->sym = sym;
 	fexpr_y->tri = yes;
 	/* add it to satmap */
@@ -71,7 +91,7 @@ static void create_fexpr_bool(struct symbol *sym)
 	
 	struct fexpr *fexpr_m;
 	if (sym->type == S_TRISTATE) {
-		fexpr_m = create_fexpr(sat_variable_nr++, FE_SYMBOL, sym->name);
+		fexpr_m = fexpr_create(sat_variable_nr++, FE_SYMBOL, sym->name);
 		str_append(&fexpr_m->name, "_MODULE");
 		fexpr_m->sym = sym;
 		fexpr_m->tri = mod;
@@ -104,7 +124,7 @@ static void create_fexpr_nonbool(struct symbol *sym)
 	
 	int i;
 	for (i = 0; i < 3; i++) {
-		struct fexpr *e = create_fexpr(sat_variable_nr++, FE_NONBOOL, sym->name);
+		struct fexpr *e = fexpr_create(sat_variable_nr++, FE_NONBOOL, sym->name);
 		e->sym = sym;
 		str_append(&e->name, "=");
 		e->nb_val = str_new();
@@ -157,7 +177,7 @@ static void create_fexpr_choice(struct symbol *sym)
 	char *name = strdup(prompt->text);
 	
 	//printf("\nChoice: %s, prop_type %s\n", sym->name, prompt->text);
-	struct fexpr *fexpr_y = create_fexpr(sat_variable_nr++, FE_CHOICE, name);
+	struct fexpr *fexpr_y = fexpr_create(sat_variable_nr++, FE_CHOICE, name);
 	fexpr_y->sym = sym;
 	fexpr_y->tri = yes;
 	/* add it to satmap */
@@ -167,7 +187,7 @@ static void create_fexpr_choice(struct symbol *sym)
 	
 	struct fexpr *fexpr_m;
 	if (sym->type == S_TRISTATE) {
-		fexpr_m = create_fexpr(sat_variable_nr++, FE_CHOICE, name);
+		fexpr_m = fexpr_create(sat_variable_nr++, FE_CHOICE, name);
 		str_append(&fexpr_m->name, "_MODULE");
 		fexpr_m->sym = sym;
 		fexpr_m->tri = mod;
@@ -325,7 +345,7 @@ struct fexpr * sym_create_nonbool_fexpr(struct symbol *sym, char *value)
 	/* fexpr already exists */
 	if (e != NULL) return e;
 	
-	e = create_fexpr(sat_variable_nr++, FE_NONBOOL, sym->name);
+	e = fexpr_create(sat_variable_nr++, FE_NONBOOL, sym->name);
 	e->sym = sym;
 	str_append(&e->name, "=");
 	str_append(&e->name, value);
@@ -482,6 +502,33 @@ struct fexpr * fexpr_not(struct fexpr *a)
 	fe->left = a;
 
 	return fe;
+}
+
+/*
+ * check, if a fexpr is in CNF
+ */
+bool fexpr_is_cnf(struct fexpr *e)
+{
+	if (!e) return false;
+	
+	switch (e->type) {
+	case FE_SYMBOL:
+	case FE_TRUE:
+	case FE_FALSE:
+	case FE_NONBOOL:
+	case FE_SELECT:
+	case FE_CHOICE:
+		return true;
+	case FE_AND:
+		return false;
+	case FE_OR:
+		return fexpr_is_cnf(e->left) && fexpr_is_cnf(e->right);
+	case FE_NOT:
+		return fexpr_is_symbol(e->left);
+	default:
+		perror("Not in CNF, FE_EQUALS.");
+		return false;
+	}
 }
 
 /*
@@ -715,56 +762,153 @@ void convert_fexpr_to_cnf(struct fexpr *e) {
 		;
 }
 
-// /*
-//  * helper function to add an expression to a CNF-clause
-//  */
-// static void add_cnf_clause(struct fexpr *e, struct cnf_clause *cl)
-// {
-// 	if (!e || !cl) return;
-// 	
-// 	if (e->left->type == FE_SYMBOL || e->left->type == FE_FALSE || e->left->type == FE_TRUE || e->left->type == FE_NONBOOL) {
-// 		add_literal_to_clause(cl, e->left->satval);
-// 	} else if (e->left->type == FE_NOT) {
-// 		add_literal_to_clause(cl, -(e->left->left->satval));
-// 	} else if (e->left->type == FE_OR) {
-// 		add_cnf_clause(e->left, cl);
-// 	}
-// 	
-// 	if (e->right->type == FE_SYMBOL || e->right->type == FE_FALSE || e->right->type == FE_TRUE || e->right->type == FE_NONBOOL) {
-// 		add_literal_to_clause(cl, e->right->satval);
-// 	} else if (e->right->type == FE_NOT) {
-// 		add_literal_to_clause(cl, -(e->right->left->satval));
-// 	} else if (e->right->type == FE_OR) {
-// 		add_cnf_clause(e->right, cl);
-// 	}
-// }
-// 
-// /*
-//  * extract the CNF-clauses from an fexpr in CNF
-//  */
-// void unfold_cnf_clause(struct fexpr *e)
-// {
-// 	if (!e) return;
-// 	
-// 	struct gstr empty_string = str_new();
-// 	struct cnf_clause *cl;
-// 	
-// 	switch (e->type) {
-// 	case FE_AND:
-// 		unfold_cnf_clause(e->left);
-// 		unfold_cnf_clause(e->right);
-// 		break;
-// 	case FE_OR:
-// 		add_cnf_clause(e, build_cnf_clause(&empty_string, 0));
-// 		break;
-// 	case FE_NOT:
-// 		cl = build_cnf_clause(&empty_string, 0);
-// 		add_literal_to_clause(cl, -(e->left->satval));
-// 		break;
-// 	default:
-// 		TODO
-// 		print_fexpr(e, -1);
-// 		printf("type %d\n", e->type);
-// 		break;
-// 	}
-// }
+/*
+ * print a fexpr
+ */
+static void print_fexpr_util(struct fexpr *e, int parent)
+{
+	if (!e) return;
+	
+	switch (e->type) {
+	case FE_SYMBOL:
+	case FE_CHOICE:
+	case FE_SELECT:
+	case FE_NONBOOL:
+	case FE_TMPSATVAR:
+		printf("%s", str_get(&e->name));
+		break;
+	case FE_AND:
+		if (parent != FE_AND && parent != -1)
+			printf("(");
+		print_fexpr_util(e->left, FE_AND);
+		printf(" && ");
+		print_fexpr_util(e->right, FE_AND);
+		if (parent != FE_AND && parent != -1)
+			printf(")");
+		break;
+	case FE_OR:
+		if (parent != FE_OR && parent != -1)
+			printf("(");
+		print_fexpr_util(e->left, FE_OR);
+		printf(" || ");
+		print_fexpr_util(e->right, FE_OR);
+		if (parent != FE_OR && parent != -1)
+			printf(")");
+		break;
+	case FE_NOT:
+		printf("!");
+		print_fexpr_util(e->left, FE_NOT);
+		break;
+	case FE_EQUALS:
+		printf("%s=%s", e->sym->name, e->eqvalue->name);
+		break;
+	case FE_FALSE:
+		printf("0");
+		break;
+	case FE_TRUE:
+		printf("1");
+		break;
+	}
+}
+void fexpr_print(char *tag, struct fexpr *e, int parent)
+{
+	printf("%s ", tag);
+	print_fexpr_util(e, parent);
+	printf("\n");
+}
+
+/*
+ * write an fexpr into a string (format needed for testing)
+ */
+void fexpr_as_char(struct fexpr *e, struct gstr *s, int parent)
+{
+	if (!e) return;
+	
+	switch (e->type) {
+	case FE_SYMBOL:
+	case FE_CHOICE:
+	case FE_SELECT:
+	case FE_NONBOOL:
+		str_append(s, "definedEx(");
+		str_append(s, str_get(&e->name));
+		str_append(s, ")");
+		return;
+	case FE_AND:
+		/* need this hack for the FeatureExpr parser */
+		if (parent != FE_AND)
+			str_append(s, "(");
+		fexpr_as_char(e->left, s, FE_AND);
+		str_append(s, " && ");
+		fexpr_as_char(e->right, s, FE_AND);
+		if (parent != FE_AND)
+			str_append(s, ")");
+		return;
+	case FE_OR:
+		if (parent != FE_OR)
+			str_append(s, "(");
+		fexpr_as_char(e->left, s, FE_OR);
+		str_append(s, " || ");
+		fexpr_as_char(e->right, s, FE_OR);
+		if (parent != FE_OR)
+			str_append(s, ")");
+		return;
+	case FE_NOT:
+		str_append(s, "!");
+		fexpr_as_char(e->left, s, FE_NOT);
+		return;
+	case FE_FALSE:
+		str_append(s, "0");
+		return;
+	case FE_TRUE:
+		str_append(s, "1");
+		return;
+	default:
+		return;
+	}
+}
+
+/*
+ * write an fexpr into a string
+ */
+void fexpr_as_char_short(struct fexpr *e, struct gstr *s, int parent)
+{
+	if (!e) return;
+	
+	switch (e->type) {
+	case FE_SYMBOL:
+	case FE_NONBOOL:
+		str_append(s, str_get(&e->name));
+		return;
+	case FE_AND:
+		/* need this hack for the FeatureExpr parser */
+		if (parent != FE_AND)
+			str_append(s, "(");
+		fexpr_as_char_short(e->left, s, FE_AND);
+		str_append(s, " && ");
+		fexpr_as_char_short(e->right, s, FE_AND);
+		if (parent != FE_AND)
+			str_append(s, ")");
+		return;
+	case FE_OR:
+		if (parent != FE_OR)
+			str_append(s, "(");
+		fexpr_as_char_short(e->left, s, FE_OR);
+		str_append(s, " || ");
+		fexpr_as_char_short(e->right, s, FE_OR);
+		if (parent != FE_OR)
+			str_append(s, ")");
+		return;
+	case FE_NOT:
+		str_append(s, "!");
+		fexpr_as_char_short(e->left, s, FE_NOT);
+		return;
+	case FE_FALSE:
+		str_append(s, "0");
+		return;
+	case FE_TRUE:
+		str_append(s, "1");
+		return;
+	default:
+		return;
+	}
+}

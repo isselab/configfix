@@ -3,24 +3,25 @@
  * Copyright (C) 2002 Roman Zippel <zippel@linux-m68k.org>
  */
 
-#include <QTextBrowser>
-#include <QTreeWidget>
-#include <QMainWindow>
-#include <QHeaderView>
-#include <qsettings.h>
-#include <QPushButton>
-#include <QSettings>
-#include <QLineEdit>
-#include <QSplitter>
 #include <QCheckBox>
 #include <QDialog>
+#include <QHeaderView>
+#include <QLineEdit>
+#include <QMainWindow>
+#include <QPushButton>
+#include <QSettings>
+#include <QSplitter>
+#include <QTextBrowser>
+#include <QTreeWidget>
 #include <QListWidget>
 #include <QTableWidget>
 #include <QList>
+#include <QComboBox>
+#include <QLabel>
 #include "expr.h"
 
 #include "conflict_resolver.h"
-#include "kconfig-sat/satconf.h"
+#include "configfix.h"
 
 class ConfigView;
 class ConfigList;
@@ -51,11 +52,17 @@ class ConfigList : public QTreeWidget {
 public:
 	ConfigList(ConfigView* p, const char *name = 0);
 	void reinit(void);
+	ConfigItem* findConfigItem(struct menu *);
 	ConfigView* parent(void) const
 	{
 		return (ConfigView*)Parent::parent();
 	}
-	ConfigItem* findConfigItem(struct menu *);
+	void setSelected(QTreeWidgetItem *item, bool enable) {
+		for (int i = 0; i < selectedItems().size(); i++)
+			selectedItems().at(i)->setSelected(false);
+
+		item->setSelected(enable);
+	}
 
 protected:
 	void keyPressEvent(QKeyEvent *e);
@@ -69,14 +76,17 @@ protected:
 public slots:
 	void setRootMenu(struct menu *menu);
 
-	void updateList(ConfigItem *item);
+	void updateList();
 	void setValue(ConfigItem* item, tristate val);
 	void changeValue(ConfigItem* item);
 	void updateSelection(void);
 	void saveSettings(void);
+	void setOptionMode(QAction *action);
+
 signals:
 	void menuChanged(struct menu *menu);
 	void menuSelected(struct menu *menu);
+	void itemSelected(struct menu *menu);
 	void parentSelected(void);
 	void gotFocus(struct menu *);
 	void selectionChanged(QList<QTreeWidgetItem*> selection);
@@ -86,24 +96,8 @@ public:
 	void updateListAll(void)
 	{
 		updateAll = true;
-		updateList(NULL);
+		updateList();
 		updateAll = false;
-	}
-	ConfigList* listView()
-	{
-		return this;
-	}
-	ConfigItem* firstChild() const
-	{
-		return (ConfigItem *)children().first();
-	}
-	void addColumn(colIdx idx)
-	{
-		showColumn(idx);
-	}
-	void removeColumn(colIdx idx)
-	{
-		hideColumn(idx);
 	}
 	void setAllOpen(bool open);
 	void setParentMenu(void);
@@ -111,13 +105,9 @@ public:
 	bool menuSkip(struct menu *);
 
 	void updateMenuList(ConfigItem *parent, struct menu*);
-	void updateMenuList(ConfigList *parent, struct menu*);
+	void updateMenuList(struct menu *menu);
 
 	bool updateAll;
-
-	QPixmap symbolYesPix, symbolModPix, symbolNoPix;
-	QPixmap choiceYesPix, choiceNoPix;
-	QPixmap menuPix, menuInvPix, menuBackPix, voidPix;
 
 	bool showName, showRange, showData;
 	enum listMode mode;
@@ -126,6 +116,8 @@ public:
 	QPalette disabledColorGroup;
 	QPalette inactivedColorGroup;
 	QMenu* headerPopup;
+
+	static QAction *showNormalAction, *showAllAction, *showPromptAction, *addSymbolsFromContextMenu;
 };
 
 class ConfigItem : public QTreeWidgetItem {
@@ -173,28 +165,16 @@ public:
 
 		return ret;
 	}
-	void setText(colIdx idx, const QString& text)
-	{
-		Parent::setText(idx, text);
-	}
-	QString text(colIdx idx) const
-	{
-		return Parent::text(idx);
-	}
-	void setPixmap(colIdx idx, const QIcon &icon)
-	{
-		Parent::setIcon(idx, icon);
-	}
-	const QIcon pixmap(colIdx idx) const
-	{
-		return icon(idx);
-	}
 	// TODO: Implement paintCell
 
 	ConfigItem* nextItem;
 	struct menu *menu;
 	bool visible;
 	bool goParent;
+
+	static QIcon symbolYesIcon, symbolModIcon, symbolNoIcon;
+	static QIcon choiceYesIcon, choiceNoIcon;
+	static QIcon menuIcon, menubackIcon;
 };
 
 class ConfigLineEdit : public QLineEdit {
@@ -219,7 +199,7 @@ class ConfigView : public QWidget {
 public:
 	ConfigView(QWidget* parent, const char *name = 0);
 	~ConfigView(void);
-	static void updateList(ConfigItem* item);
+	static void updateList();
 	static void updateListAll(void);
 
 	bool showName(void) const { return list->showName; }
@@ -229,7 +209,7 @@ public slots:
 	void setShowName(bool);
 	void setShowRange(bool);
 	void setShowData(bool);
-	void setOptionMode(QAction *);
+
 	void ShowContextMenu(const QPoint& p);
 signals:
 	void showNameChanged(bool);
@@ -327,6 +307,7 @@ public slots:
 	void setInfo(struct menu *menu);
 	void saveSettings(void);
 	void setShowDebug(bool);
+	void clicked (const QUrl &url);
 
 signals:
 	void showDebugChanged(bool);
@@ -350,7 +331,7 @@ class ConfigSearchWindow : public QDialog {
 	Q_OBJECT
 	typedef class QDialog Parent;
 public:
-	ConfigSearchWindow(ConfigMainWindow* parent, const char *name = 0);
+	ConfigSearchWindow(ConfigMainWindow *parent);
 
 public slots:
 	void saveSettings(void);
@@ -380,6 +361,7 @@ public:
 	ConfigMainWindow(void);
 public slots:
 	void changeMenu(struct menu *);
+	void changeItens(struct menu *);
 	void setMenuLink(struct menu *);
 	void listFocusChanged(void);
 	void goBack(void);

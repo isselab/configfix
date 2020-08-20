@@ -1,3 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/*
+ * Copyright (C) 2020 Patrick Franz <patfra71@gmail.com>
+ */
+
 #define _GNU_SOURCE
 #include <assert.h>
 #include <locale.h>
@@ -9,11 +14,23 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "satconf.h"
+#include "configfix.h"
+
+static void unfold_cnf_clause(struct fexpr *e);
+static void build_cnf_tseytin(struct fexpr *e);
+static void build_cnf_tseytin_util(struct fexpr *e, struct fexpr *t);
+static void build_cnf_tseytin_and(struct fexpr *e);
+static void build_cnf_tseytin_and_util(struct fexpr *e, struct fexpr *t);
+static void build_cnf_tseytin_or(struct fexpr *e);
+static void build_cnf_tseytin_or_util(struct fexpr *e, struct fexpr *t);
+static void build_cnf_tseytin_not(struct fexpr *e);
+static void build_cnf_tseytin_not_util(struct fexpr *e, struct fexpr *t);
+
+static struct fexpr * get_fexpr_tseytin(struct fexpr *e);
 
 static void run_unsat_problem(PicoSAT *pico);
-static void add_select_constraints(PicoSAT *pico, struct symbol *sym);
-static void sym_desired_value(void);
+
+static PicoSAT *pico;
 
 /* -------------------------------------- */
 
@@ -29,6 +46,347 @@ PicoSAT * initialize_picosat(void)
 	printf("done.\n");
 	
 	return pico;
+}
+
+/*
+ * construct the CNF-clauses from the constraints
+ */
+void construct_cnf_clauses(PicoSAT *p)
+{
+	pico = p;
+	unsigned int i, j;
+	struct symbol *sym;
+	
+	/* adding unit-clauses for constants */
+	sat_add_clause(2, pico, -(const_false->satval));
+	sat_add_clause(2, pico, const_true->satval);
+	
+// 	printf("\n");
+
+	for_all_symbols(i, sym) {
+		if (sym->type == S_UNKNOWN) continue;
+		
+// 		print_sym_name(sym);
+// 		print_sym_constraint(sym);
+		
+		struct fexpr *e;
+		for (j = 0; j < sym->constraints->arr->len; j++) {
+			e = g_array_index(sym->constraints->arr, struct fexpr *, j);
+			
+// 			print_fexpr("e:", e, -1);
+			
+			if (fexpr_is_cnf(e)) {
+// 				print_fexpr("CNF:", e, -1);
+				unfold_cnf_clause(e);
+			} else {
+// 				print_fexpr("!Not CNF:", e, -1);
+				build_cnf_tseytin(e);
+			}
+		}
+	}
+}
+
+/*
+ * helper function to add an expression to a CNF-clause
+ */
+static void unfold_cnf_clause_util(GArray *arr, struct fexpr *e)
+{
+	switch (e->type) {
+	case FE_SYMBOL:
+	case FE_TRUE:
+	case FE_FALSE:
+	case FE_NONBOOL:
+	case FE_SELECT:
+	case FE_CHOICE:
+// 		picosat_add(pico, e->satval);
+		g_array_add_ints(2, arr, e->satval);
+		break;
+	case FE_OR:
+		unfold_cnf_clause_util(arr, e->left);
+		unfold_cnf_clause_util(arr, e->right);
+		break;
+	case FE_NOT:
+// 		picosat_add(pico, -(e->left->satval));
+		g_array_add_ints(2, arr, -(e->left->satval));
+		break;
+	default:
+		perror("Not in CNF, FE_EQUALS.");
+	}
+}
+
+/*
+ * extract the variables from a fexpr in CNF
+ */
+static void unfold_cnf_clause(struct fexpr *e)
+{
+	assert(fexpr_is_cnf(e));
+
+	GArray *arr = g_array_new(false, false, sizeof(int *));
+	
+	unfold_cnf_clause_util(arr, e);
+
+	sat_add_clause_garray(pico, arr);
+}
+
+/*
+ * build CNF-clauses for a fexpr not in CNF
+ */
+static void build_cnf_tseytin(struct fexpr *e)
+{
+	assert(!fexpr_is_cnf(e));
+	
+// 	print_fexpr("e:", e, -1);
+
+	switch (e->type) {
+	case FE_AND:
+		build_cnf_tseytin_and(e);
+		break;
+	case FE_OR:
+		build_cnf_tseytin_or(e);
+		break;
+	case FE_NOT:
+		build_cnf_tseytin_not(e);
+		break;
+	default:
+		perror("Expression not a propositional logic formula. root.");
+	}
+}
+
+
+/*
+ * build CNF-clauses for a fexpr of type AND
+ */
+static void build_cnf_tseytin_and(struct fexpr *e)
+{
+	struct fexpr *t1, *t2;
+	
+	/* set left side */
+	if (fexpr_is_symbol_or_neg_atom(e->left)) {
+		t1 = e->left;
+	} else {
+		t1 = create_tmpsatvar();
+		build_cnf_tseytin_util(e->left, t1);
+	}
+	
+	/* set right side */
+	if (fexpr_is_symbol_or_neg_atom(e->right)) {
+		t2 = e->right;
+	} else {
+		t2 = create_tmpsatvar();
+		build_cnf_tseytin_util(e->right, t2);
+	}
+	
+	int a = t1->type == FE_NOT ? -(t1->left->satval) : t1->satval;
+	int b = t2->type == FE_NOT ? -(t2->left->satval) : t2->satval;
+	
+// 	picosat_add_arg(pico, a, 0);
+	sat_add_clause(2, pico, a);
+// 	picosat_add_arg(pico, b, 0);
+	sat_add_clause(2, pico, b);
+	
+// 	printf("\nWARNING!!\nCNF-CLAUSE JUST AND!!\n");
+// 	print_fexpr("e:", e, -1);
+}
+
+/*
+ * build CNF-clauses for a fexpr of type OR
+ */
+static void build_cnf_tseytin_or(struct fexpr *e)
+{
+	struct fexpr *t1, *t2;
+	
+	/* set left side */
+	if (fexpr_is_symbol_or_neg_atom(e->left)) {
+		t1 = e->left;
+	} else {
+		t1 = create_tmpsatvar();
+		build_cnf_tseytin_util(e->left, t1);
+	}
+	
+	/* set right side */
+	if (fexpr_is_symbol_or_neg_atom(e->right)) {
+		t2 = e->right;
+	} else {
+		t2 = create_tmpsatvar();
+		build_cnf_tseytin_util(e->right, t2);
+	}
+	
+	int a = t1->type == FE_NOT ? -(t1->left->satval) : t1->satval;
+	int b = t2->type == FE_NOT ? -(t2->left->satval) : t2->satval;
+	
+// 	picosat_add_arg(pico, a, b, 0);
+	sat_add_clause(3, pico, a, b);
+}
+
+/*
+ * build CNF-clauses for a fexpr of type OR
+ */
+static void build_cnf_tseytin_not(struct fexpr *e)
+{
+	struct fexpr *t1;
+	
+	/* set left side */
+	if (fexpr_is_symbol_or_neg_atom(e->left)) {
+		t1 = e->left;
+	} else {
+		t1 = create_tmpsatvar();
+		build_cnf_tseytin_util(e->left, t1);
+	}
+	
+	int a = t1->type == FE_NOT ? -(t1->left->satval) : t1->satval;
+	
+// 	picosat_add_arg(pico, a, 0);
+	sat_add_clause(2, pico, a);
+	
+	printf("\nWARNING!!\nCNF-CLAUSE JUST NOT!!\n");
+}
+
+/*
+ * helper switch for Tseytin util-functions
+ */
+static void build_cnf_tseytin_util(struct fexpr *e, struct fexpr *t)
+{
+	switch (e->type) {
+	case FE_AND:
+		build_cnf_tseytin_and_util(e, t);
+		break;
+	case FE_OR:
+		build_cnf_tseytin_or_util(e, t);
+		break;
+	case FE_NOT:
+		build_cnf_tseytin_not_util(e, t);
+		break;
+	default:
+		perror("Expression not a propositional logic formula.");
+	}
+}
+
+/*
+ * build Tseytin CNF-clauses for a fexpr of type AND
+ */
+static void build_cnf_tseytin_and_util(struct fexpr *e, struct fexpr *t)
+{
+	assert(e->type == FE_AND);
+	
+	struct fexpr *left = get_fexpr_tseytin(e->left);
+	struct fexpr *right = get_fexpr_tseytin(e->right);
+	
+// 	print_fexpr("Left:", left, -1);
+// 	print_fexpr("Right:", right, -1);
+	
+	int a = left->type == FE_NOT ? -(left->left->satval) : left->satval;
+	int b = right->type == FE_NOT ? -(right->left->satval) : right->satval;
+	int c = t->satval;
+	
+	/* -A v -B v C */
+// 	picosat_add_arg(pico, -a, -b, c, 0);
+	sat_add_clause(4, pico, -a, -b, c);
+	/* A v -C */
+// 	picosat_add_arg(pico, a, -c, 0);
+	sat_add_clause(3, pico, a, -c);
+	/* B v -C */
+// 	picosat_add_arg(pico, b, -c, 0);
+	sat_add_clause(3, pico, b, -c);
+}
+
+/*
+ * build Tseytin CNF-clauses for a fexpr of type OR
+ */
+static void build_cnf_tseytin_or_util(struct fexpr *e, struct fexpr *t)
+{
+	assert(e->type == FE_OR);
+
+	struct fexpr *left = get_fexpr_tseytin(e->left);
+	struct fexpr *right = get_fexpr_tseytin(e->right);
+	
+// 	print_fexpr("Left:", left, -1);
+// 	print_fexpr("Right:", right, -1);
+	
+	int a = left->type == FE_NOT ? -(left->left->satval) : left->satval;
+	int b = right->type == FE_NOT ? -(right->left->satval) : right->satval;
+	int c = t->satval;
+    
+	/* A v B v -C */
+// 	picosat_add_arg(pico, a, b, -c, 0);
+	sat_add_clause(4, pico, a, b, -c);
+	/* -A v C */
+// 	picosat_add_arg(pico, -a, c, 0);
+	sat_add_clause(3, pico, -a, c);
+	/* -B v C */
+// 	picosat_add_arg(pico, -b, c, 0);
+	sat_add_clause(3, pico, -b, c);
+}
+
+/*
+ * build Tseytin CNF-clauses for a fexpr of type NOT
+ */
+static void build_cnf_tseytin_not_util(struct fexpr *e, struct fexpr *t)
+{
+	assert(e->type == FE_NOT);
+
+	struct fexpr *left = get_fexpr_tseytin(e->left);
+	
+// 	print_fexpr("Left:", left, -1);
+	
+	int a = left->type == FE_NOT ? -(left->left->satval) : left->satval;
+	int c = t->satval;
+	
+	/* -A v -C */
+// 	picosat_add_arg(pico, -a, -c, 0);
+	sat_add_clause(3, pico, -a, -c);
+	/* A v C */
+// 	picosat_add_arg(pico, a, c, 0);
+	sat_add_clause(3, pico, a, c);
+}
+
+/*
+ * return the SAT-variable/fexpr for a fexpr of type NOT.
+ * If it is a symbol/atom, return that. Otherwise return the auxiliary SAT-variable.
+ */
+static struct fexpr * get_fexpr_tseytin_not(struct fexpr *e)
+{
+	if (fexpr_is_symbol_or_neg_atom(e))
+		return e;
+	
+	struct fexpr *t = create_tmpsatvar();
+	build_cnf_tseytin_not_util(e, t);
+	
+	return t;
+}
+
+/*
+ * return the SAT-variable/fexpr needed for the CNF-clause.
+ * If it is a symbol/atom, return that. Otherwise return the auxiliary SAT-variable.
+ */
+static struct fexpr * get_fexpr_tseytin(struct fexpr *e)
+{
+	if (!e) perror("Empty fexpr.");
+	
+// 	printf("e type: %d\n", e->type);
+	
+	struct fexpr *t;
+	switch (e->type) {
+	case FE_SYMBOL:
+	case FE_TRUE:
+	case FE_FALSE:
+	case FE_NONBOOL:
+	case FE_SELECT:
+	case FE_CHOICE:
+		return e;
+	case FE_AND:
+		t = create_tmpsatvar();
+		build_cnf_tseytin_and_util(e, t);
+		return t;
+	case FE_OR:
+		t = create_tmpsatvar();
+		build_cnf_tseytin_or_util(e, t);
+		return t;
+	case FE_NOT:
+		return get_fexpr_tseytin_not(e);
+	default:
+		perror("Not in CNF, FE_EQUALS.");
+		return false;
+	}
 }
 
 /*
@@ -216,7 +574,7 @@ void picosat_solve(PicoSAT *pico)
 static void run_unsat_problem(PicoSAT *pico)
 {
 	/* get the diagnoses from RangeFix */
-	GArray *diagnoses = rangefix_init(pico);
+	GArray *diagnoses = rangefix_run(pico);
 	
 	/* ask user for solution to apply */
 	GArray *fix = choose_fix(diagnoses);
@@ -226,66 +584,6 @@ static void run_unsat_problem(PicoSAT *pico)
 	
 	/* apply the fix */ 
 	apply_fix(fix);
-}
-
-/*
- * add the sharpened dependency constraints in order to make it unsatisfiable 
- */
-static void add_select_constraints(PicoSAT *pico, struct symbol *sym)
-{
-// 	assert(sym->dir_dep.expr);
-// 	
-// 	struct k_expr *ke_dirdep = parse_expr(sym->dir_dep.expr, NULL);
-// 	struct fexpr *dep_both = calculate_fexpr_both(ke_dirdep);
-// 	int tmp_clauses = nr_of_clauses;
-// 	
-// 	if (sym->type == S_TRISTATE) {
-// 		struct fexpr *dep_y = calculate_fexpr_y(ke_dirdep);
-// 		struct fexpr *fe_y = implies(sym->fexpr_y, dep_y);
-// 		convert_fexpr_to_nnf(fe_y);
-// 		convert_fexpr_to_cnf(fe_y);
-// 		unfold_cnf_clause(fe_y);
-// 		
-// 		struct fexpr *fe_both = implies(sym->fexpr_m, dep_both);
-// 		convert_fexpr_to_nnf(fe_both);
-// 		convert_fexpr_to_cnf(fe_both);
-// 		unfold_cnf_clause(fe_both);
-// 	} else if (sym->type == S_BOOLEAN) {
-// 		struct fexpr *fe_both = implies(sym->fexpr_y, dep_both);
-// 		convert_fexpr_to_nnf(fe_both);
-// 		convert_fexpr_to_cnf(fe_both);
-// 		unfold_cnf_clause(fe_both);
-// 	}
-// 	
-// 	/* add newly created CNF-clauses to PicoSAT, ignore tautologies */
-// 	struct cnf_clause *cl;
-// 	unsigned int i, j;
-// 	for (i = tmp_clauses; i < cnf_clauses->len; i++) {
-// 		cl = g_array_index(cnf_clauses, struct cnf_clause *, i);
-// 		if (cnf_is_tautology(cl)) {
-// 			nr_of_clauses--;
-// 			continue;
-// 		}
-// 		
-// 		struct cnf_literal *lit;
-// 		for (j = 0; j < cl->lits->len; j++) {
-// 			lit = g_array_index(cl->lits, struct cnf_literal *, j);
-// 			picosat_add(pico, lit->val);
-// 			if (j == cl->lits->len - 1)
-// 				picosat_add(pico, 0);
-// 		}
-// 	}
-// 	printf("old %d, new %d\n", tmp_clauses, nr_of_clauses);
-}
-
-static void sym_desired_value(void)
-{
-	int choice;
-	printf("\n> ");
-	scanf("%d", &choice);
-	
-	/* no changes wanted */
-	if (choice == 0) return;
 }
 
 /*

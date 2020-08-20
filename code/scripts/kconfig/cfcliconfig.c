@@ -9,7 +9,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "kconfig-sat/satconf.h"
+#include "configfix.h"
 
 // static bool init_done = false;
 
@@ -22,7 +22,7 @@ static struct symbol_dvalue * sym_create_sdv(struct symbol *sym, char *input);
 
 int main(int argc, char *argv[])
 {
-	printf("\nHello satdvconfig!\n");
+	printf("\nCLI for configfix!\n");
 	
 	/* parse Kconfig-file and read .config */
 	init_config(argv[1]);

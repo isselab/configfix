@@ -1,12 +1,6 @@
 #ifndef DEFS_H
 #define DEFS_H
 
-#define CNF_REASON_LENGTH 512
-#define STRING_LENGTH 100
-#define PRINT_ALL_CNF false
-#define PRINT_CNF_REASONS true
-#define SATVARS_PER_SYMBOL 3
-
 /* external variables */
 extern unsigned int sat_variable_nr;
 extern unsigned int tmp_variable_nr;

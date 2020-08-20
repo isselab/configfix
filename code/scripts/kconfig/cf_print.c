@@ -1,3 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/*
+ * Copyright (C) 2020 Patrick Franz <patfra71@gmail.com>
+ */
+
 #define _GNU_SOURCE
 #include <assert.h>
 #include <locale.h>
@@ -9,7 +14,12 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "satconf.h"
+#include "configfix.h"
+
+static void print_symbol(struct symbol *sym);
+static void print_default(struct property *p);
+static void print_select(struct property *p);
+static void print_imply(struct property *p);
 
 static void print_expr_util(struct expr *e, int prevtoken);
 
@@ -39,7 +49,7 @@ void print_all_symbols(void)
 /*
  * print the symbol
  */
-void print_symbol(struct symbol *sym)
+static void print_symbol(struct symbol *sym)
 {
 	printf("Symbol: ");
 	struct property *p;
@@ -118,7 +128,7 @@ void print_sym_name(struct symbol *sym)
 /*
  * print a default value for a property
  */
-void print_default(struct property *p)
+static void print_default(struct property *p)
 {
 	assert(p->type == P_DEFAULT);
 	printf("\tdefault %u", p->expr->left.sym->curr.tri);
@@ -132,7 +142,7 @@ void print_default(struct property *p)
 /*
  * print a select statement for a property
  */
-void print_select(struct property *p)
+static void print_select(struct property *p)
 {
 	assert(p->type == P_SELECT);
 	struct expr *e = p->expr;
@@ -149,7 +159,7 @@ void print_select(struct property *p)
 /*
  * print an imply statement for a property
  */
-void print_imply(struct property *p)
+static void print_imply(struct property *p)
 {
 	assert(p->type == P_IMPLY);
 	struct expr *e = p->expr;
@@ -297,63 +307,6 @@ void print_kexpr(char *tag, struct k_expr *e)
 	printf("\n");
 }
 
-
-/*
- * print a fexpr
- */
-static void print_fexpr_util(struct fexpr *e, int parent)
-{
-	if (!e) return;
-	
-	switch (e->type) {
-	case FE_SYMBOL:
-	case FE_CHOICE:
-	case FE_SELECT:
-	case FE_NONBOOL:
-	case FE_TMPSATVAR:
-		printf("%s", str_get(&e->name));
-		break;
-	case FE_AND:
-		if (parent != FE_AND && parent != -1)
-			printf("(");
-		print_fexpr_util(e->left, FE_AND);
-		printf(" && ");
-		print_fexpr_util(e->right, FE_AND);
-		if (parent != FE_AND && parent != -1)
-			printf(")");
-		break;
-	case FE_OR:
-		if (parent != FE_OR && parent != -1)
-			printf("(");
-		print_fexpr_util(e->left, FE_OR);
-		printf(" || ");
-		print_fexpr_util(e->right, FE_OR);
-		if (parent != FE_OR && parent != -1)
-			printf(")");
-		break;
-	case FE_NOT:
-		printf("!");
-		print_fexpr_util(e->left, FE_NOT);
-		break;
-	case FE_EQUALS:
-		printf("%s=%s", e->sym->name, e->eqvalue->name);
-		break;
-	case FE_FALSE:
-		printf("0");
-		break;
-	case FE_TRUE:
-		printf("1");
-		break;
-	}
-}
-void print_fexpr(char *tag, struct fexpr *e, int parent)
-{
-	printf("%s ", tag);
-	print_fexpr_util(e, parent);
-	printf("\n");
-}
-
-
 /*
  * print some debug info about the tree structure of k_expr
  */
@@ -432,102 +385,6 @@ void kexpr_as_char(struct k_expr *e, struct gstr *s)
 }
 
 /*
- * write an fexpr into a string (format needed for testing)
- */
-void fexpr_as_char(struct fexpr *e, struct gstr *s, int parent)
-{
-	if (!e) return;
-	
-	switch (e->type) {
-	case FE_SYMBOL:
-	case FE_CHOICE:
-	case FE_SELECT:
-	case FE_NONBOOL:
-		str_append(s, "definedEx(");
-		str_append(s, str_get(&e->name));
-		str_append(s, ")");
-		return;
-	case FE_AND:
-		/* need this hack for the FeatureExpr parser */
-		if (parent != FE_AND)
-			str_append(s, "(");
-		fexpr_as_char(e->left, s, FE_AND);
-		str_append(s, " && ");
-		fexpr_as_char(e->right, s, FE_AND);
-		if (parent != FE_AND)
-			str_append(s, ")");
-		return;
-	case FE_OR:
-		if (parent != FE_OR)
-			str_append(s, "(");
-		fexpr_as_char(e->left, s, FE_OR);
-		str_append(s, " || ");
-		fexpr_as_char(e->right, s, FE_OR);
-		if (parent != FE_OR)
-			str_append(s, ")");
-		return;
-	case FE_NOT:
-		str_append(s, "!");
-		fexpr_as_char(e->left, s, FE_NOT);
-		return;
-	case FE_FALSE:
-		str_append(s, "0");
-		return;
-	case FE_TRUE:
-		str_append(s, "1");
-		return;
-	default:
-		return;
-	}
-}
-
-/*
- * write an fexpr into a string
- */
-void fexpr_as_char_short(struct fexpr *e, struct gstr *s, int parent)
-{
-	if (!e) return;
-	
-	switch (e->type) {
-	case FE_SYMBOL:
-	case FE_NONBOOL:
-		str_append(s, str_get(&e->name));
-		return;
-	case FE_AND:
-		/* need this hack for the FeatureExpr parser */
-		if (parent != FE_AND)
-			str_append(s, "(");
-		fexpr_as_char_short(e->left, s, FE_AND);
-		str_append(s, " && ");
-		fexpr_as_char_short(e->right, s, FE_AND);
-		if (parent != FE_AND)
-			str_append(s, ")");
-		return;
-	case FE_OR:
-		if (parent != FE_OR)
-			str_append(s, "(");
-		fexpr_as_char_short(e->left, s, FE_OR);
-		str_append(s, " || ");
-		fexpr_as_char_short(e->right, s, FE_OR);
-		if (parent != FE_OR)
-			str_append(s, ")");
-		return;
-	case FE_NOT:
-		str_append(s, "!");
-		fexpr_as_char_short(e->left, s, FE_NOT);
-		return;
-	case FE_FALSE:
-		str_append(s, "0");
-		return;
-	case FE_TRUE:
-		str_append(s, "1");
-		return;
-	default:
-		return;
-	}
-}
-
-/*
  * print all constraints for a symbol
  */
 void print_sym_constraint(struct symbol* sym)
@@ -536,7 +393,7 @@ void print_sym_constraint(struct symbol* sym)
 	int i;
 	for (i = 0; i < sym->constraints->arr->len; i++) {
 		e = g_array_index(sym->constraints->arr, struct fexpr *, i);
-		print_fexpr_util(e, -1);
+		fexpr_print("::", e, -1);
 		
 		#if PRINT_ALL_CNF
 			printf("\nCNF: ");
@@ -550,11 +407,11 @@ void print_sym_constraint(struct symbol* sym)
 /*
  * print the satmap
  */
-void print_satmap(gpointer key, gpointer value, gpointer userData)
-{
-	struct fexpr *e = (struct fexpr *) value;
-	printf( "%d => %s\n", *((int *) key), str_get(&e->name));
-}
+// void print_satmap(gpointer key, gpointer value, gpointer userData)
+// {
+// 	struct fexpr *e = (struct fexpr *) value;
+// 	printf( "%d => %s\n", *((int *) key), str_get(&e->name));
+// }
 
 /*
  * print a default map
@@ -570,7 +427,7 @@ void print_default_map(GArray *map)
 		str_append(&s, "\t");
 		str_append(&s, str_get(&entry->val->name));
 		str_append(&s, " ->");
-		print_fexpr(strdup(str_get(&s)), entry->e, -1);
+		fexpr_print(strdup(str_get(&s)), entry->e, -1);
 	}
 }
 
@@ -578,10 +435,10 @@ void print_default_map(GArray *map)
 /*
  * print all variables from the satmap in DIMACS-format
  */
-static void print_satmap_dimacs(gpointer key, gpointer value, gpointer fd)
-{
-	fprintf((FILE *) fd, "c %d %s\n", *((int *) key), (char *) value);
-}
+// static void print_satmap_dimacs(gpointer key, gpointer value, gpointer fd)
+// {
+// 	fprintf((FILE *) fd, "c %d %s\n", *((int *) key), (char *) value);
+// }
 
 
 /*
@@ -618,7 +475,7 @@ void write_cnf_to_file(GArray *cnf_clauses, int sat_variable_nr, int nr_of_claus
 /*
  * write all constraints into a file for testing purposes
  */
-void write_constraints_to_file(void)
+void write_constraints_to_file_kcr(void)
 {
 	printf("Writing constraints to file...");
 	

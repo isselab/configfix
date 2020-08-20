@@ -1,3 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/*
+ * Copyright (C) 2020 Patrick Franz <patfra71@gmail.com>
+ */
+
 #define _GNU_SOURCE
 #include <assert.h>
 #include <locale.h>
@@ -9,7 +14,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "satconf.h"
+#include "configfix.h"
 
 unsigned int sat_variable_nr = 1;
 unsigned int tmp_variable_nr = 1;
@@ -208,13 +213,20 @@ GArray * run_satconf(GArray *arr)
 	
 // 	return EXIT_SUCCESS;
 
-	sdv_arr = g_array_copy(arr);
+	/* copy array with symbols to change */
+// 	sdv_arr = g_array_copy(arr);
+	unsigned int i;
+	struct symbol_dvalue *sdv;
+	sdv_arr = g_array_new(false, false, sizeof(struct symbol_dvalue *));
+	for (i = 0; i < arr->len; i++) {
+		sdv = g_array_index(arr, struct symbol_dvalue *, i);
+		g_array_append_val(sdv_arr, sdv);
+	}
 	
 	/* add assumptions for conflict-symbols */
 	sym_add_assumption_sdv(pico, sdv_arr);
 	
 	/* add assumptions for all other symbols */
-	unsigned int i;
 	struct symbol *sym;
 	for_all_symbols(i, sym) {
 		if (sym->type == S_UNKNOWN) continue;
@@ -249,7 +261,7 @@ GArray * run_satconf(GArray *arr)
 		printf("===> PROBLEM IS UNSATISFIABLE <===\n");
 		printf("\n");
 		
-		ret = rangefix_init(pico);
+		ret = rangefix_run(pico);
 	}
 	else {
 		printf("Unknown if satisfiable.\n");
