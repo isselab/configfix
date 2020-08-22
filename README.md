@@ -31,16 +31,21 @@ As configfix is integrated within xconfig, it needs xconfig to run as well as th
 
 ## Instructions
 
-1. Clone this repository.
+1. Clone or download this repository.
 2. Download the kernel source tree from [the official archives](https://www.kernel.org/) and extract it. It works with versions 5.7.x - 5.9.x.
-3. Run `copy_files.sh $KERNEL_SOURCE_TREE` in this repository.
-4. Make sure that a `.config` is present in `$KERNEL_SOURCE_TREE`.
+3. Run `copy_files.sh KERNEL_SOURCE_TREE` in this repository.
+4. Make sure that a `.config` is present in `KERNEL_SOURCE_TREE`.
 5. Run `make xconfig` in your extracted source tree.
 
 
 If the bottom panel is invisible, you need to drag it up. See the following screenshots.
 
 ![Hidden1](images/hidden1.png) ![Hidden2](images/hidden2.png)
+
+
+## Exporting constraints
+
+The constraints as well as the SAT problem in DIMACS can be exported into textfiles. Run `make cfoutconfig` in the extracted source tree to export everything.
 
 
 ## Limitations
