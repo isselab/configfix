@@ -1491,10 +1491,10 @@ GArray * choose_fix(GArray *diag)
 /*
  * apply the fixes from a diagnosis
  */
-void apply_fix(GArray *diag)
+int apply_fix(GArray* diag)
 {
 	struct symbol_fix *fix;
-	unsigned int i, no_symbols_set = 0, iterations = 0;
+	unsigned int i, no_symbols_set = 0, iterations = 0, manually_changed = 0;
 // 	GArray *tmp = g_array_copy(diag);
 	GArray *tmp = g_array_new(false, false, sizeof(struct symbol_fix *));
 	for (i = 0; i < diag->len; i++) {
@@ -1508,7 +1508,7 @@ void apply_fix(GArray *diag)
 	while (no_symbols_set < diag->len) {
 		if (iterations > diag->len * 2) {
 			printf("\nCould not apply all values :-(.\n");
-			return;
+			return manually_changed;
 		}
 		
 		for (i = 0; i < tmp->len; i++) {
@@ -1538,7 +1538,6 @@ void apply_fix(GArray *diag)
 			/* could not set value, try next */
 			if (fix->type == SF_BOOLEAN) {
 				if (!sym_set_tristate_value(fix->sym, fix->tri)) {
-// 					printf("Could not set value for %s.\n", sym_get_name(fix->sym));
 					continue;
 				}
 			} else if (fix->type == SF_NONBOOLEAN) {
@@ -1551,6 +1550,7 @@ void apply_fix(GArray *diag)
 
 			
 			/* could set value, remove from tmp */
+			manually_changed++;
 			if (fix->type == SF_BOOLEAN) {
 				printf("%s set to %s.\n", sym_get_name(fix->sym), tristate_get_char(fix->tri));
 			} else if (fix->type == SF_NONBOOLEAN) {
@@ -1564,6 +1564,8 @@ void apply_fix(GArray *diag)
 	}
 
 	printf("\nFixes successfully applied.\n");
+	
+	return manually_changed;
 }
 
 /*
