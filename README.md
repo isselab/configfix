@@ -40,7 +40,7 @@ As configfix is integrated within xconfig, it needs xconfig to run as well as th
 
 If the bottom panel is invisible, you need to drag it up. See the following screenshots.
 
-![Hidden1](images/hidden1.png) ![Hidden2](images/hidden2.png)
+![Hidden1](images/hidden1.png)
 
 
 ## Exporting constraints
