@@ -1257,7 +1257,7 @@ void ConflictsView::changeSolutionTable(int solution_number){
 		struct symbol_fix* cur_symbol = g_array_index(selected_solution,struct symbol_fix*,i);
 
 		QTableWidgetItem* symbol_name = new QTableWidgetItem(cur_symbol->sym->name);
-		auto green = QColor(0,255,0);
+		auto green = QColor(0,170,0);
 		auto red = QColor(255,0,0);
 
 		// if(sym_string_within_range(cur_symbol->sym,cur_symbol->sym->name)){
@@ -1288,7 +1288,7 @@ void ConflictsView::changeSolutionTable(int solution_number){
 }
 void ConflictsView::UpdateConflictsViewColorization(void)
 {
-	auto green = QColor(0,255,0);
+	auto green = QColor(0,170,0);
 	auto red = QColor(255,0,0);
 
 	if (solutionTable->rowCount() == 0 || current_solution_number < 0)

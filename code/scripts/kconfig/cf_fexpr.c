@@ -876,6 +876,8 @@ void fexpr_as_char_short(struct fexpr *e, struct gstr *s, int parent)
 	
 	switch (e->type) {
 	case FE_SYMBOL:
+	case FE_CHOICE:
+	case FE_SELECT:
 	case FE_NONBOOL:
 		str_append(s, str_get(&e->name));
 		return;
