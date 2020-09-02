@@ -31,6 +31,7 @@ struct fexpr *symbol_no_fexpr; /* symbol_no_as fexpr */
 
 static PicoSAT *pico;
 static bool init_done = false;
+static GArray *conflict_syms = NULL;
 
 static bool sdv_within_range(GArray *arr);
 
@@ -235,10 +236,13 @@ GArray * run_satconf(GArray *arr)
 			sym_add_assumption(pico, sym);
 	}
 	
-	/* print CNF-problem into file */
-// 	FILE *fd = fopen("satdv.out", "w");
-// 	picosat_print(pico, fd);
-// 	fclose(fd);
+	/* store the conflict symbols */
+	if (conflict_syms != NULL) g_array_free(conflict_syms, false);
+	conflict_syms = g_array_new(false, false, sizeof(struct symbol *));
+	for (i = 0; i < sdv_arr->len; i++) {
+		sdv = g_array_index(sdv_arr, struct symbol_dvalue *, i);
+		g_array_append_val(conflict_syms, sdv->sym);
+	}
 
 	printf("Solving SAT-problem...");
 	start = clock();
@@ -277,16 +281,125 @@ GArray * run_satconf(GArray *arr)
 }
 
 /*
- * apply a fix
+ * check whether a symbol is a conflict symbol
  */
-int apply_satfix(GArray *fix)
+bool sym_is_conflict_sym(struct symbol *sym)
 {
-	printf("\nApplying fixes...\n");
-	print_diagnosis_symbol(fix);
+	unsigned int i;
+	struct symbol *sym2;
+	for (i = 0; i < conflict_syms->len; i++) {
+		sym2 = g_array_index(conflict_syms, struct symbol *, i);
+		
+		if (sym == sym2) return true;
+	}
 	
-	apply_fix(fix);
+	return false;
+}
+
+/*
+ * check whether all conflict symbols are set to their target values
+ */
+bool syms_have_target_value(GArray *arr)
+{
+	unsigned int i;
+	struct symbol_fix *fix;
+	for (i = 0; i < arr->len; i++) {
+		fix = g_array_index(arr, struct symbol_fix *, i);
+		
+		if (!sym_is_conflict_sym(fix->sym)) continue;
+		
+		if (sym_is_boolean(fix->sym)) {
+			if (fix->tri != sym_get_tristate_value(fix->sym))
+				return false;
+		}
+		else {
+			if (strcmp(str_get(&fix->nb_val),sym_get_string_value(fix->sym)) != 0)
+				return false;
+		}
+	}
 	
-	return EXIT_SUCCESS;
+	return true;
+}
+ 
+/*
+ * 
+ * apply the fixes from a diagnosis
+ */
+int apply_fix(GArray* diag)
+{
+	struct symbol_fix *fix;
+	unsigned int i, no_symbols_set = 0, iterations = 0, manually_changed = 0;
+// 	GArray *tmp = g_array_copy(diag);
+	GArray *tmp = g_array_new(false, false, sizeof(struct symbol_fix *));
+	for (i = 0; i < diag->len; i++) {
+		fix = g_array_index(diag, struct symbol_fix *, i);
+		g_array_append_val(tmp, fix);
+	}
+
+	printf("\nTrying to apply fixes now...\n");
+	
+	while (no_symbols_set < diag->len && !syms_have_target_value(diag)) {
+// 	while (!syms_have_target_value(diag)) {
+		if (iterations > diag->len * 2) {
+			printf("\nCould not apply all values :-(.\n");
+			return manually_changed;
+		}
+		
+		for (i = 0; i < tmp->len; i++) {
+			fix = g_array_index(tmp, struct symbol_fix *, i);
+			
+			/* update symbol's current value */
+			sym_calc_value(fix->sym);
+			
+			/* value already set? */
+			if (fix->type == SF_BOOLEAN) {
+				if (fix->tri == sym_get_tristate_value(fix->sym)) {
+					g_array_remove_index(tmp, i--);
+					no_symbols_set++;
+					continue;
+				}
+			} else if (fix->type == SF_NONBOOLEAN) {
+				if (strcmp(str_get(&fix->nb_val),sym_get_string_value(fix->sym)) == 0) {
+					g_array_remove_index(tmp, i--);
+					no_symbols_set++;
+					continue;
+				}
+			} else {
+				perror("Error applying fix. Value set for disallowed.");
+			}
+
+				
+			/* could not set value, try next */
+			if (fix->type == SF_BOOLEAN) {
+				if (!sym_set_tristate_value(fix->sym, fix->tri)) {
+					continue;
+				}
+			} else if (fix->type == SF_NONBOOLEAN) {
+				if (!sym_set_string_value(fix->sym, str_get(&fix->nb_val))) {
+					continue;
+				}
+			} else {
+				perror("Error applying fix. Value set for disallowed.");
+			}
+
+			
+			/* could set value, remove from tmp */
+			manually_changed++;
+			if (fix->type == SF_BOOLEAN) {
+				printf("%s set to %s.\n", sym_get_name(fix->sym), tristate_get_char(fix->tri));
+			} else if (fix->type == SF_NONBOOLEAN) {
+				printf("%s set to %s.\n", sym_get_name(fix->sym), str_get(&fix->nb_val));
+			}
+			
+			g_array_remove_index(tmp, i--);
+			no_symbols_set++;
+		}
+		iterations++;
+	}
+
+	printf("\nFixes successfully applied.\n");
+	
+	return manually_changed;
 }
 
 /*

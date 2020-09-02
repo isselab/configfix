@@ -53,7 +53,7 @@ int main(int argc, char *argv[])
 		chosen_fix = choose_fix(diagnoses);
 		
 		if (chosen_fix != NULL)
-			apply_satfix(chosen_fix);
+			apply_fix(chosen_fix);
 		
 		/* clear the array */
 		g_array_free(symbols, TRUE);

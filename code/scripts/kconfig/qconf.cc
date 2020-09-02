@@ -1122,7 +1122,7 @@ void ConflictsView::applyFixButtonClick(){
 	}
 
 	GArray* selected_solution = g_array_index(solution_output,GArray * , solution_number);
-	apply_satfix(selected_solution);
+	apply_fix(selected_solution);
 	
 	ConfigView::updateListAll();
 }
@@ -1362,11 +1362,6 @@ void ConflictsView::calculateFixes(void)
 	// populate the solution table from the first solution gotten
 	numSolutionLabel->setText(QString("Solutions: (%1) found").arg(solution_output->len));
 	changeSolutionTable(0);
-
-
-
-
-
 
 }
 void ConflictsView::changeAll(void)

@@ -37,7 +37,7 @@ extern "C" {
 /* external functions */
 GArray * run_satconf(GArray *arr);
 
-int apply_satfix(GArray *fix);
+int apply_fix(GArray *diag);
 
 int run_satconf_cli(const char *Kconfig_file);
 
