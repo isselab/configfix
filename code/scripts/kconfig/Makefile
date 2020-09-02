@@ -227,13 +227,13 @@ $(obj)/%.moc: $(src)/%.h $(obj)/qconf-cfg
 	$(call cmd,moc)
 
 # configfix testing: 
-PHONY += randtestconfig
+PHONY += cftestconfig
 
-randtestconfig: HOSTCXXFLAGS_qconf.o	+= -DCONFIGFIX_TEST -ggdb
-randtestconfig: HOSTCFLAGS_rangefix.o	+= -DCONFIGFIX_TEST -ggdb
-randtestconfig: HOSTCFLAGS_lexer.lex.o	+= -DCONFIGFIX_TEST -ggdb
-randtestconfig: HOSTCFLAGS_parser.tab.o	+= -DCONFIGFIX_TEST -ggdb
-randtestconfig: $(obj)/qconf
+cftestconfig: HOSTCXXFLAGS_qconf.o	+= -DCONFIGFIX_TEST -ggdb
+cftestconfig: HOSTCFLAGS_rangefix.o	+= -DCONFIGFIX_TEST -ggdb
+cftestconfig: HOSTCFLAGS_lexer.lex.o	+= -DCONFIGFIX_TEST -ggdb
+cftestconfig: HOSTCFLAGS_parser.tab.o	+= -DCONFIGFIX_TEST -ggdb
+cftestconfig: $(obj)/qconf
 	$< $(silent) $(Kconfig)
 
 # gconf: Used for the gconfig target based on GTK+
