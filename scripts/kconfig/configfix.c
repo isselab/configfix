@@ -143,16 +143,6 @@ int run_satconf_cli(const char *Kconfig_file)
 	printf("Temp vars    : %d\n", tmp_variable_nr - 1);
 	printf("PicoSAT time : %.6f secs.\n", picosat_seconds(pico));
 
-	/* 
-	 * write CNF-clauses in DIMACS-format to file 
-	 * NOTE: this output is without the unit-clauses
-	 */
-// 	write_cnf_to_file(cnf_clauses, sat_variable_nr, nr_of_clauses);
-
-// 	FILE *fd = fopen("dimacs.out", "w");
-// 	picosat_print(pico, fd);
-// 	fclose(fd);
-	
 	return EXIT_SUCCESS;
 }
 
@@ -248,7 +238,6 @@ GArray * run_satconf(GArray *arr)
 	start = clock();
 	
 	int res = picosat_sat(pico, -1);
-// 	int res = PICOSAT_UNSATISFIABLE;
 	
 	end = clock();
 	time = ((double) (end - start)) / CLOCKS_PER_SEC;
@@ -275,7 +264,6 @@ GArray * run_satconf(GArray *arr)
 	
 // 	picosat_reset(pico);
 // 	g_hash_table_remove_all(cnf_clauses_map);
-// 	free(pico);
 	g_array_free(sdv_arr, true);
 	return ret;
 }
@@ -283,7 +271,7 @@ GArray * run_satconf(GArray *arr)
 /*
  * check whether a symbol is a conflict symbol
  */
-bool sym_is_conflict_sym(struct symbol *sym)
+static bool sym_is_conflict_sym(struct symbol *sym)
 {
 	unsigned int i;
 	struct symbol *sym2;
@@ -299,7 +287,7 @@ bool sym_is_conflict_sym(struct symbol *sym)
 /*
  * check whether all conflict symbols are set to their target values
  */
-bool syms_have_target_value(GArray *arr)
+static bool syms_have_target_value(GArray *arr)
 {
 	unsigned int i;
 	struct symbol_fix *fix;
@@ -336,7 +324,7 @@ int apply_fix(GArray* diag)
 		g_array_append_val(tmp, fix);
 	}
 
-	printf("\nTrying to apply fixes now...\n");
+	printf("Trying to apply fixes now...\n");
 	
 	while (no_symbols_set < diag->len && !syms_have_target_value(diag)) {
 // 	while (!syms_have_target_value(diag)) {
@@ -397,7 +385,7 @@ int apply_fix(GArray* diag)
 		iterations++;
 	}
 
-	printf("\nFixes successfully applied.\n");
+	printf("Fixes successfully applied.\n");
 	
 	return manually_changed;
 }

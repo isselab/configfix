@@ -134,24 +134,18 @@ static GArray * generate_diagnoses(PicoSAT *pico)
 	double time_t;
 	start_t = clock();
 	
-	//num = (rand() % (upper – lower + 1)) + lower
 	while (E->len > 0) {
-// 		printf("start while, E.length: %d\n", E->len);
 		/* get random diagnosis */
 		diagnosis_index = rand() % (E->len);
 		GArray *E0 = g_array_index(E, GArray *, diagnosis_index);
-// 		print_array("Select partial diagnosis", E0);
 		
 		/* calculate C\E0 */
 		GArray *c = get_difference(C, E0);
-// 		print_array("Soft constraints", c);
-// 		getchar();
 		
 		/* set assumptions */
 		nr_of_assumptions = 0;
 		nr_of_assumptions_true = 0;
 		set_assumptions(pico, c);
-// 		printf("Asuumptions: %d (true: %d)\n", nr_of_assumptions, nr_of_assumptions_true);
 		
 // 		clock_t start_t2, end_t2;
 // 		double time_t2;
@@ -163,10 +157,7 @@ static GArray * generate_diagnoses(PicoSAT *pico)
 // 		time_t2 = ((double) (end_t2 - start_t2)) / CLOCKS_PER_SEC;
 // 		printf("PicoSAT time : %.6f secs.\n", time_t2);
 		
-// 		int res = picosat_sat(pico, -1);
 		if (res == PICOSAT_SATISFIABLE) {
-// 			printf("SATISFIABLE\n");
-// 			getchar();
 			if (PRINT_DIAGNOSIS_FOUND)
 				print_array("DIAGNOSIS FOUND", E0);
 			
@@ -184,12 +175,11 @@ static GArray * generate_diagnoses(PicoSAT *pico)
 			continue;
 			
 		} else if (res == PICOSAT_UNSATISFIABLE) {
-// 			printf("UNSATISFIABLE\n");
-// 			getchar();
+
 		} else if (res == PICOSAT_UNKNOWN) {
 			printf("UNKNOWN\n");
 		} else {
-			perror("Doh brother.");
+			perror("Doh.");
 		}
 		
 		/* check elapsed time */
@@ -211,28 +201,21 @@ static GArray * generate_diagnoses(PicoSAT *pico)
 		for (i = 0; i < E->len; i++) {
 			/* get partial diagnosis */
 			e = g_array_index(E, GArray *, i);
-// 			print_array("Look at partial diagnosis", e);
 			
 			/* check, if there is an intersection between e and X
 			 * if there is, go to the next partial diagnosis */
-			if (has_intersection(e, X)) {
-// 				printf("Intersection with core.\n");
-				continue;
-			}
+			if (has_intersection(e, X)) continue;
 			
 			/* for each fexpr in the core */
 			for (j = 0; j < X->len; j++) {
 				x = g_array_index(X, struct fexpr *, j);
-// 				printf("x = %s\n", str_get(&x->name));
 
 				/* create {x} */
 				x_set = g_array_new(false, false, sizeof(struct fexpr *));
 				g_array_append_val(x_set, x);
-// 				print_array("{x}", x_set);
 				
 				/* create E' = e ∪ {x} */
 				E1 = get_union(e, x_set);
-// 				print_array("E1", E1);
 				
 				/* create (E\e) ∪ R */
 				E_R_Union = clone_array(E);
@@ -244,14 +227,10 @@ static GArray * generate_diagnoses(PicoSAT *pico)
 				/* E" ∈ (E\e) ∪ R */
 				for (k = 0; k < E_R_Union->len; k++) {
 					E2 = g_array_index(E_R_Union, GArray *, k);
-// 					print_array("E2", E2);
-// 					getchar();
 					
 					/* E" ⊆ E' ? */
 					if (is_subset_of(E2, E1)) {
 						E2_subset_of_E1 = true;
-// 						print_array("E\"", E2);
-// 						print_array("E'", E1);
 						break;
 					}
 				}
@@ -259,15 +238,12 @@ static GArray * generate_diagnoses(PicoSAT *pico)
 				g_array_free(E_R_Union, false);
 				
 				/* ∄ E" ⊆ E' */
-				if (!E2_subset_of_E1) {
+				if (!E2_subset_of_E1)
 					E = g_array_append_val(E, E1);
-// 					print_array("Add partial diagnosis", E1);
-				} else {
+				else
 					g_array_free(E1, false);
-				}
 			}
 			
-// 			print_array("Remove partial diagnosis", e);
 			g_array_free(e, false);
 			g_array_remove_index(E, i);
 			i--;
@@ -275,9 +251,6 @@ static GArray * generate_diagnoses(PicoSAT *pico)
 		}
 		g_array_free(X, false);
 		g_array_free(c, false);
-		
-// 		printf("E.length: %d, i = %d\n", E->len, i);
-		
 	}
 
 DIAGNOSES_FOUND:
@@ -350,24 +323,19 @@ static GArray * generate_diagnoses_sliced(PicoSAT *pico)
 	/* extract unsat core and add it to the SAT solver */
 	extract_unsat_core_hard(pico, pico_cur, clauses_added, satvarmap);
 	
-	//num = (rand() % (upper – lower + 1)) + lower
 	while (E->len > 0) {
-// 		printf("start while, E.length: %d\n", E->len);
 		/* get random diagnosis */
 		diagnosis_index = rand() % (E->len);
 		GArray *E0 = g_array_index(E, GArray *, diagnosis_index);
-// 		print_array("Select partial diagnosis", E0);
 		
 		/* calculate C\E0 */
 		GArray *c = get_difference(C, E0);
-// 		print_array("Soft constraints", c);
 		
 	CONTINUE_ALT1:
 		/* set assumptions */
 		nr_of_assumptions = 0;
 		nr_of_assumptions_true = 0;
 		set_assumptions_mapped(pico_cur, c, satvarmap);
-// 		printf("Asuumptions: %d (true: %d)\n", nr_of_assumptions, nr_of_assumptions_true);
 		
 // 		clock_t start_t2, end_t2;
 // 		double time_t2;
@@ -383,8 +351,6 @@ static GArray * generate_diagnoses_sliced(PicoSAT *pico)
 		
 		
 		if (res == PICOSAT_SATISFIABLE) {
-// 			printf("SATISFIABLE\n");
-			
 			/* Does diagnosis solve entire problem? */
 			if (!diagnosis_satisfies_entire_problem(pico, c)) {
 				extract_unsat_core_hard(pico, pico_cur, clauses_added, satvarmap);
@@ -409,11 +375,11 @@ static GArray * generate_diagnoses_sliced(PicoSAT *pico)
 			continue;
 			
 		} else if (res == PICOSAT_UNSATISFIABLE) {
-// 			printf("UNSATISFIABLE\n");
+
 		} else if (res == PICOSAT_UNKNOWN) {
 			printf("UNKNOWN\n");
 		} else {
-			perror("Doh brother.");
+			perror("Doh.");
 		}
 		
 		/* check elapsed time */
@@ -435,28 +401,21 @@ static GArray * generate_diagnoses_sliced(PicoSAT *pico)
 		for (i = 0; i < E->len; i++) {
 			/* get partial diagnosis */
 			e = g_array_index(E, GArray *, i);
-// 			print_array("Look at partial diagnosis", e);
 			
 			/* check, if there is an intersection between e and X
 			 * if there is, go to the next partial diagnosis */
-			if (has_intersection(e, X)) {
-// 				printf("Intersection with core.\n");
-				continue;
-			}
+			if (has_intersection(e, X)) continue;
 			
 			/* for each fexpr in the core */
 			for (j = 0; j < X->len; j++) {
 				x = g_array_index(X, struct fexpr *, j);
-// 				printf("x = %s\n", str_get(&x->name));
 
 				/* create {x} */
 				x_set = g_array_new(false, false, sizeof(struct fexpr *));
 				g_array_append_val(x_set, x);
-// 				print_array("{x}", x_set);
 				
 				/* create E' = e ∪ {x} */
 				E1 = get_union(e, x_set);
-// 				print_array("E1", E1);
 				
 				/* create (E\e) ∪ R */
 				E_R_Union = clone_array(E);
@@ -468,14 +427,10 @@ static GArray * generate_diagnoses_sliced(PicoSAT *pico)
 				/* E" ∈ (E\e) ∪ R */
 				for (k = 0; k < E_R_Union->len; k++) {
 					E2 = g_array_index(E_R_Union, GArray *, k);
-// 					print_array("E2", E2);
-// 					getchar();
 					
 					/* E" ⊆ E' ? */
 					if (is_subset_of(E2, E1)) {
 						E2_subset_of_E1 = true;
-// 						print_array("E\"", E2);
-// 						print_array("E'", E1);
 						break;
 					}
 				}
@@ -483,15 +438,12 @@ static GArray * generate_diagnoses_sliced(PicoSAT *pico)
 				g_array_free(E_R_Union, false);
 				
 				/* ∄ E" ⊆ E' */
-				if (!E2_subset_of_E1) {
+				if (!E2_subset_of_E1)
 					E = g_array_append_val(E, E1);
-// 					print_array("Add partial diagnosis", E1);
-				} else {
+				else
 					g_array_free(E1, false);
-				}
 			}
 			
-// 			print_array("Remove partial diagnosis", e);
 			g_array_free(e, false);
 			g_array_remove_index(E, i);
 			i--;
@@ -499,9 +451,6 @@ static GArray * generate_diagnoses_sliced(PicoSAT *pico)
 		}
 		g_array_free(X, false);
 		g_array_free(c, false);
-		
-// 		printf("E.length: %d, i = %d\n", E->len, i);
-		
 	}
 
 DIAGNOSES_FOUND:
@@ -1488,115 +1437,6 @@ GArray * choose_fix(GArray *diag)
 	return g_array_index(diag, GArray *, choice - 1);
 }
 
-/*
- * apply the fixes from a diagnosis
- */
-// void apply_fix2(GArray *diag)
-// {
-// 	struct symbol_fix *fix;
-// 	struct symbol *sym;
-// 	unsigned int i;
-// 	char *file_sat = ".config_sat";
-// 	GHashTable *map = g_hash_table_new_full(
-// 		g_str_hash,
-// 		g_str_equal,
-// 		NULL,
-// 		free
-//   	);
-// 	
-// 	printf("\nTrying to apply fixes now...\n");
-// 
-// 	/* store the current configuration in a hashmap */
-// 	printf("Backing up old values...");
-// 	for_all_symbols(i, sym) {
-// 		if (sym->type == S_UNKNOWN) continue;
-// 		
-// 		if (g_hash_table_lookup(map, sym_get_name(sym)) != NULL)
-// 			printf("Double key found: %s\n", sym_get_name(sym));
-// 		
-// 		g_hash_table_insert(map, strdup(sym_get_name(sym)), strdup(sym_get_string_value(sym)));
-// 	}
-// 	printf("done.\n");
-// 	
-// 	/* 
-// 	 * changes will be applied as a "transaction"
-// 	 * we allow illegal values temporarily
-// 	 */
-// 	printf("Setting new values...");
-// 	for (i = 0; i < diag->len; i++) {
-// 		fix = g_array_index(diag, struct symbol_fix *, i);
-// 		
-// 		if (fix->type == SF_BOOLEAN) {
-// 			sym_set_tristate_value_mod(fix->sym, fix->tri);
-// 		} else if (fix->type == SF_NONBOOLEAN) {
-// 			sym_set_string_value(fix->sym, str_get(&fix->nb_val));
-// 		}
-// 	}
-// 	printf("done.\n");
-// 	
-// 	/* Just updating the symbols' does not suffice.
-// 	 * The values for everything else needs to be updated as well.
-// 	 * Recalculations must be performed.
-// 	 * One way of doing it is to save the current configuration and then
-// 	 * simply reload it, thereby recalculating everything.
-// 	 */
-// 	
-// 	/* store the changes... */
-// 	printf("Reloading configuration...\n");
-// 	conf_write(file_sat);
-// 	
-// 	/* ...and reload the configuration */
-// 	conf_read(file_sat);
-// 	printf("done.\n");
-// 	
-// 	/* check, that all values are within range */
-// 	printf("Checking range of all symbols...");
-// 	for (i = 0; i < diag->len; i++) {
-// 		fix = g_array_index(diag, struct symbol_fix *, i);
-// 		
-// 		if (fix->type == SF_BOOLEAN) {
-// 			if (!sym_tristate_within_range(fix->sym, fix->tri))
-// 				printf("Symbol %s not within range\n", sym_get_name(fix->sym));
-// 		} else if (fix->type == SF_NONBOOLEAN) {
-// 			if (!sym_string_within_range(fix->sym, str_get(&fix->nb_val)))
-// 				printf("Symbol %s not within range\n", sym_get_name(fix->sym));
-// 		}	
-// 	}
-// 	printf("done.\n");
-// 	
-// 	/* 
-// 	 * check, that only the proposed changes have changed
-// 	 * exception for symbols without a prompt
-// 	 */
-// 	printf("Checking, that only symbols from the diagnosis have changed...");
-// 	for_all_symbols(i, sym) {
-// 		char *oldval = g_hash_table_lookup(map, sym_get_name(sym));
-// 		char *newval = strdup(sym_get_string_value(sym));
-// 		
-// 		/* 
-// 		 * if the symbol is in the diagnosis, it must change
-// 		 * if the symbol is not in the diagnosis, the value does not change
-// 		 */
-// 		if (diagnosis_contains_symbol(diag, sym)) {
-// 			if (strcmp(oldval, newval) == 0)
-// 				printf("%s should have changed.\n", sym_get_name(sym));
-// 		} else {
-// 			if (strcmp(oldval, newval) != 0)
-// 				printf("%s should not change.\n", sym_get_name(sym));
-// 		}
-// 	}
-// 	printf("done.\n");
-// 	
-// 	/* roll back to original configuration in case of problems */
-// 	TODO
-// 	
-// 	/* clean up */
-// 	if (remove(file_sat))
-// 		printf("Error: could not remove temporary files.\n");
-// 
-// 
-// 	printf("Applying fixes done.\n");
-// }
 
 /*
  * calculate the new value for a boolean symbol given a diagnosis and an fexpr

@@ -1178,7 +1178,7 @@ void ConflictsView::addSymbol(struct menu *m)
 				conflictsTable->setItem(conflictsTable->rowCount()-1,1,new QTableWidgetItem(tristate_value_to_string(currentval)));
 				conflictsTable->setItem(conflictsTable->rowCount()-1,2,new QTableWidgetItem(tristate_value_to_string(currentval)));
 
-				std::cerr << "Adding " << sym->name << " to list " << std::endl;
+// 				std::cerr << "Adding " << sym->name << " to list " << std::endl;
 
 			}else{
 				// std::cerr << "we have the symbol already at index " << unsigned(addedSymbolList[sym->name]-1 )<< std::endl;
@@ -1248,7 +1248,7 @@ void ConflictsView::changeSolutionTable(int solution_number){
 	}
 	GArray* selected_solution = g_array_index(solution_output,GArray * , solution_number);
 	current_solution_number = solution_number;
-	std::cout << "solution length =" << unsigned(selected_solution->len) << std::endl;
+// 	std::cout << "solution length =" << unsigned(selected_solution->len) << std::endl;
 	// solutionTable->clearContents();
 	solutionTable->setRowCount(0);
 	for (int i = 0; i <selected_solution->len; i++)
@@ -1268,22 +1268,22 @@ void ConflictsView::changeSolutionTable(int solution_number){
 		solutionTable->setItem(solutionTable->rowCount()-1,0,symbol_name);
 
 		if (cur_symbol->type == symbolfix_type::SF_BOOLEAN){
-			std::cout << "adding boolean symbol " << std::endl;
+// 			std::cout << "adding boolean symbol " << std::endl;
 			QTableWidgetItem* symbol_value = new QTableWidgetItem(tristate_value_to_string(cur_symbol->tri));
 			symbol_name->setForeground( sym_string_within_range(cur_symbol->sym, tristate_value_to_string(cur_symbol->tri).toStdString().c_str())? green : red);
 			solutionTable->setItem(solutionTable->rowCount()-1,1,symbol_value);
 		} else if(cur_symbol->type == symbolfix_type::SF_NONBOOLEAN){
-			std::cout << "adding non boolean symbol " << std::endl;
+// 			std::cout << "adding non boolean symbol " << std::endl;
 			QTableWidgetItem* symbol_value = new QTableWidgetItem(cur_symbol->nb_val.s);
 			symbol_name->setForeground( sym_string_within_range(cur_symbol->sym, tristate_value_to_string(cur_symbol->tri).toStdString().c_str())? green : red);
 			solutionTable->setItem(solutionTable->rowCount()-1,1,symbol_value);
 		} else {
 			QTableWidgetItem* symbol_value = new QTableWidgetItem(cur_symbol->disallowed.s);
 			symbol_name->setForeground( sym_string_within_range(cur_symbol->sym, tristate_value_to_string(cur_symbol->tri).toStdString().c_str())? green : red);
-			std::cout << "adding disalllowed symbol " << std::endl;
+// 			std::cout << "adding disalllowed symbol " << std::endl;
 			solutionTable->setItem(solutionTable->rowCount()-1,1,symbol_value);
 		}
-		std::cout << "Adding " << cur_symbol->sym->name << " to list " << std::endl;
+// 		std::cout << "Adding " << cur_symbol->sym->name << " to list " << std::endl;
 	}
 }
 void ConflictsView::UpdateConflictsViewColorization(void)
@@ -1315,7 +1315,7 @@ void ConflictsView::UpdateConflictsViewColorization(void)
 }
 void ConflictsView::calculateFixes(void)
 {
-	std::cout << "calculating fixes" << std::endl;
+// 	std::cout << "calculating fixes" << std::endl;
 	// call satconf to get a solution by looking at the grid and taking the symbol and their desired value.
 	//get the symbols from  grid:
 	if(conflictsTable->rowCount() == 0)
@@ -1353,7 +1353,7 @@ void ConflictsView::calculateFixes(void)
 	{
 		return;
 	}
-	std::cout << "solution length = " << unsigned(solution_output->len) << std::endl;
+// 	std::cout << "solution length = " << unsigned(solution_output->len) << std::endl;
 	solutionSelector->clear();
 	for (int i = 0; i < solution_output->len; i++)
 	{

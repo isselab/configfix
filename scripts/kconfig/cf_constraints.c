@@ -659,29 +659,16 @@ static void add_choice_constraints(struct symbol *sym)
 static void add_invisible_constraints(struct symbol *sym, struct property *prompt)
 {
 	assert(prompt);
-// 	printf("\n");
-// 	print_sym_name(sym);
-// 	print_expr("Prompt condition:", prompt->visible.expr, E_NONE);
-// 	print_expr("dir_dep:         ", sym->dir_dep.expr, 0);
 	
 	struct k_expr *ke_promptCond = parse_expr(prompt->visible.expr, NULL);
 	struct fexpr *promptCondition_both = calculate_fexpr_both(ke_promptCond);
 	struct fexpr *promptCondition_yes = calculate_fexpr_y(ke_promptCond);
 	struct fexpr *nopromptCond = fexpr_not(promptCondition_both);
-
-// 	convert_fexpr_to_nnf(nopromptCond);
-// 	print_fexpr("nopromptCond:    ", nopromptCond, -1);
 	
 	GArray *defaults = get_defaults(sym);
 	struct fexpr *default_y = get_default_y(defaults);
 	struct fexpr *default_m = get_default_m(defaults);
 	struct fexpr *default_both = fexpr_or(default_y, default_m);
-	
-// 	printf("Default map (len %d):\n", defaults->len);
-// 	print_default_map(defaults);
-// 	print_fexpr("Default_y:", default_y, -1);
-// 	print_fexpr("Default_m:", default_m, -1);
-// 	print_fexpr("Default_both:", default_both, -1);
 	
 	/* tristate elements are only selectable as yes, if they are visible as yes */
 	if (sym->type == S_TRISTATE) {
@@ -689,8 +676,8 @@ static void add_invisible_constraints(struct symbol *sym, struct property *promp
 		
 		convert_fexpr_to_nnf(e1);
 		sym_add_constraint(sym, e1);
-	}	
-	
+	}
+
 	/* if invisible and on by default, then a symbol can only be deactivated by its dependencies */
 	if (sym->type == S_TRISTATE) {
 		if (defaults->len == 0) return;
@@ -715,9 +702,7 @@ static void add_invisible_constraints(struct symbol *sym, struct property *promp
 	} else {
 		
 	}
-	
 
-	
 }
 
 /*
@@ -1075,6 +1060,12 @@ unsigned int count_counstraints(void)
 void sym_add_constraint(struct symbol *sym, struct fexpr *constraint)
 {
 	if (!constraint) return;
+	
+	/* no need to add that */
+	if (constraint == const_true) return;
+	
+	/* this should never happen */
+	if (constraint == const_false) perror("Adding const_false.");
 	
 	g_array_append_val(sym->constraints->arr, constraint);
 }
