@@ -19,9 +19,9 @@ export KCONFIG_CONFIG="$PWD/.config"
 # Set variables that Kconfig model depends on, and which
 # are usually set in Makefiles before Kconfig is parsed.
 export VERSION=5
-export PATCHLEVEL=3
-export SUBLEVEL=0
-export KERNELVERSION=5.3.0
+export PATCHLEVEL=9
+export SUBLEVEL=0-rc6
+export KERNELVERSION=5.9.0-rc6
 export CC=gcc
 export CC_VERSION_TEXT=`$CC --version 2>/dev/null | head -n 1`
 export ARCH=@
@@ -30,8 +30,9 @@ export srctree=. #$CONFIGFIX_PATH
 
 cd $CONFIGFIX_PATH
 
-# pass eventual extra arguments to xconfig
-scripts/kconfig/qconf Kconfig "$@"
+# scripts/kconfig/qconf Kconfig "$@" # pass eventual extra arguments to xconfig
+# run xconfig via make
+make cftestconfig
 
 # unset variables
 unset KCONFIG_CONFIG
