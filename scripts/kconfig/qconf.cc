@@ -36,13 +36,12 @@
 #include <QBrush>
 #include <QColor>
 
-// #include "kconfig-sat/satconf.h"
-
 #ifdef CONFIGFIX_TEST
 #include <dirent.h>
 #include <time.h>
-#include "kconfig-sat/utils.h"
-#include "kconfig-sat/rangefix.h"
+#include "cf_utils.h"
+#include "configfix.h"
+#include "cf_print.h"
 #include <algorithm>    // std::next_permutation
 #include <QTextStream>
 #endif
@@ -58,6 +57,11 @@ static inline QString qgettext(const char* str)
 }
 
 #ifdef CONFIGFIX_TEST
+// iterate fixes in a diagnosis with and without index
+#define for_all_fixes(diag, fix) \
+	int fix_idx; for (fix_idx = 0; fix_idx < diag->len; fix_idx++) for (fix = g_array_index(diag, struct symbol_fix *, fix_idx);fix;fix=NULL)
+#define for_every_fix(diag, i, fix) \
+	for (i = 0; i < diag->len; i++) for (fix = g_array_index(diag, struct symbol_fix *, i);fix;fix=NULL)
 // testing modes
 #define RANDOM_TESTING 1
 #define MANUAL_TESTING 2
@@ -78,17 +82,21 @@ static bool sym_has_conflict(struct symbol *sym);
 static GHashTable* config_backup(void);
 static int config_compare(GHashTable *backup);
 static void config_reset(void);
+static const char* sym_get_type_name(struct symbol *sym);
 static symbol_fix* get_symbol_fix(struct symbol *sym, GArray *diag);
 static const char* sym_fix_get_string_value(struct symbol_fix *sym_fix);
 static bool diag_dependencies_met(GArray *diag);
 static bool symbol_has_changed(struct symbol *sym, GHashTable *backup);
 static void print_setup(const char *name);
 static void print_config_stats(ConfigList *list);
+static void save_sample_stats();
 static GArray* rearrange_diagnosis(GArray *diag, int fix_idxs[]);
 // static void save_diagnosis(GArray *diag, char* filename);
 static void save_diagnosis(GArray *diag, char* file_prefix, bool valid_diag);
 static void save_diag_2(GArray *diag, char* file_prefix, bool valid_diag);
-static bool verify_diagnosis(int i, const char *result_prefix, GArray *diag);
+static bool verify_diagnosis(int i, const char *result_prefix, GArray *diag, QTableWidget* conflictsTable);
+static bool verify_fix_target_values(GArray *diag);
+static bool verify_resolution(QTableWidget* conflictsTable);
 static bool verify_changed_symbols(GArray *diag);
 static char* get_config_dir(void);
 static char* get_conflict_dir(void);
@@ -1554,10 +1562,15 @@ void ConflictsView::testRandomConlict(void)
 		// both RANDOM_TESTING and MANUAL_TESTING - verify diagnoses
 		verifyDiagnoses(str_get(&result_prefix));
 
-		printf("Will restore initial configuration\n");getchar();
+		// reset configuration
+		printf("Restoring initial configuration... ");
+		emit(refreshMenu());
 		config_reset();
 		emit(refreshMenu());
-		config_compare(initial_config);
+		if (config_compare(initial_config) != 0)
+			printf("ERROR: configuration and backup mismatch\n");
+		else 
+			printf("OK\n");
 
 		// FIXME move to verifyDiagnoses?
 		// output_result();
@@ -1613,7 +1626,7 @@ void ConflictsView::generateConflict(void)
 			}
 
 			// consider only conflicting items
-			if (sym_has_conflict(sym)) { //prompt(sym) && !sym_is_changeable(sym)) {
+			if (sym_has_conflict(sym)) { 
 
 				// FIXME - "prefectly random selection"
 				if (rand() < 1000000) {
@@ -1623,7 +1636,6 @@ void ConflictsView::generateConflict(void)
 					tristate wanted = current == yes ? no : yes;
 					conflictsTable->setItem(conflictsTable->rowCount()-1,1,
 						new QTableWidgetItem(tristate_value_to_string(wanted)));
-					// ++conflict_count;
 				}
 			}
 
@@ -1735,16 +1747,15 @@ void ConflictsView::verifyDiagnoses(const char *result_prefix) // const char*?
 		// verify i-th diagnosis
 		verify_diagnosis(
 			i+1, result_prefix, 
-			g_array_index(solution_output, GArray*, i));
-		
+			g_array_index(solution_output, GArray*, i),
+			conflictsTable);
+
 		// reset configuration
-		printf("Resetting configuration...\n");
 		emit(refreshMenu());
 		config_reset();
 		emit(refreshMenu());
 		if (config_compare(initial_config) != 0)
-			printf("Error: configuration and backup mismatch\n");
-		// getchar();
+			printf("\nERROR: could not reset configuration after verifying diagnosis\n");
 	}
 #endif
 }
@@ -1755,7 +1766,8 @@ void ConflictsView::verifyDiagnoses(const char *result_prefix) // const char*?
 #ifdef CONFIGFIX_TEST
 /* static functions */
 
-static bool verify_diagnosis(int i, const char *result_prefix, GArray *diag)
+static bool verify_diagnosis(int i, const char *result_prefix, 
+	GArray *diag, QTableWidget* conflictsTable)
 {
 	int size = diag->len;
 
@@ -1794,7 +1806,6 @@ static bool verify_diagnosis(int i, const char *result_prefix, GArray *diag)
 
 
 	/* Check 1 - apply the fixes */
-	printf("\nTrying to apply fixes: ");
 
 	int permutation_count = 0;
 
@@ -1811,9 +1822,29 @@ static bool verify_diagnosis(int i, const char *result_prefix, GArray *diag)
 	do {
 		permutation = rearrange_diagnosis(diag, fix_idxs);
 		permutation_count++;
-		if (apply_fix_bool(permutation)) {
-			APPLIED = true;
-			break;
+
+		/* Verifying target values directly after apply_fix() may fail */
+		// if (apply_fix(permutation) && verify_resolution(conflictsTable)) {
+		// 	APPLIED = true;
+		// 	verify_fix_target_values(permutation);
+		// 	break;
+		
+		/* Therefore config must be saved before verifying target values */ 
+		if (apply_fix(permutation)) {
+			GHashTable *before_write = config_backup();
+			conf_write(".config.try");
+			// reload, compare
+			conf_read(".config.try");
+			if (config_compare(before_write) != 0)
+				// new values propagated
+				printf(".config.try: config & backup mismatch\n");
+			g_hash_table_destroy(before_write);
+
+			// this function check both conflict and fix symbols
+			if (verify_fix_target_values(permutation)) { // && verify_resolution(conflictsTable)) {
+				APPLIED = true;
+				break;
+			}
 		} else {
 			//DEBUG
 			// config_compare(initial_config);
@@ -1821,7 +1852,7 @@ static bool verify_diagnosis(int i, const char *result_prefix, GArray *diag)
 			config_reset();
 			// emit(refreshMenu());
 			if (config_compare(initial_config) != 0) {
-				printf("\nError: could not reset configuration after testing permutation:\n");
+				printf("\nERROR: could not reset configuration after testing permutation:\n");
 				print_diagnosis_symbol(permutation);
 				ERR_RESET = true;
 				break;
@@ -1851,7 +1882,7 @@ static bool verify_diagnosis(int i, const char *result_prefix, GArray *diag)
 		// column 10 - Valid
 		append_result("NO");
 		// column 11 - Applied
-		append_result((char*) (APPLIED ? "YES" : "NO"));
+		append_result((char*) ("NO"));
 		// column 13 - Reset errors
 		append_result((char*) (ERR_RESET ? "YES" : "NO"));
 		output_result();
@@ -1868,11 +1899,11 @@ static bool verify_diagnosis(int i, const char *result_prefix, GArray *diag)
 		+ strlen(".config.") 
 		+ strlen(diag_prefix) + 1];
 
-	sprintf(config_filename, "%s.config.%s", conflict_dir, diag_prefix); //get_conflict_dir
+	sprintf(config_filename, "%s.config.%s", conflict_dir, diag_prefix); 
 
 	// save configuration, make backup		
 	conf_write(config_filename);
-	GHashTable *after_write = after_write = config_backup();
+	GHashTable *after_write = config_backup();
 
 	// reload, compare
 	conf_read(config_filename);
@@ -1898,11 +1929,6 @@ static bool verify_diagnosis(int i, const char *result_prefix, GArray *diag)
 
 	/* Check 3 - check for unmet dependencies */
 
-	// if (!diag_dependencies_met(diag))
-	// 	printf("Fix has unmet dependencies\n");
-	// else
-	// 	printf("Fix dependencies have been met\n");
-
 	DEPS_MET = diag_dependencies_met(diag);
 
 
@@ -1921,10 +1947,8 @@ static bool verify_diagnosis(int i, const char *result_prefix, GArray *diag)
 	append_result((char*) (DEPS_MET ? "YES" : "NO"));
 
 	output_result();
-
-	return VALID;
-
 	
+	return VALID;
 
 
 
@@ -1943,6 +1967,65 @@ static bool verify_diagnosis(int i, const char *result_prefix, GArray *diag)
 	// printf("Will restore initial configuration\n");getchar();
 	// config_reset();
 	// config_compare(initial_config);
+}
+
+/* 
+ * Check if all symbols in the diagnosis have their target values.
+ */
+static bool verify_fix_target_values(GArray *diag)
+{
+	struct symbol *sym;
+	struct symbol_fix *fix;
+	for_all_fixes(diag, fix) {
+		sym = fix->sym;
+		switch (sym_get_type(sym)) {
+		case S_BOOLEAN:
+		case S_TRISTATE:
+			if (fix->tri != sym_get_tristate_value(fix->sym)) {
+				printf("Fix symbol %s: target %s != actual %s\n", 
+					sym_get_name(sym),
+					sym_fix_get_string_value(fix),
+					sym_get_string_value(sym));
+				return false;
+			}
+			break;
+		default:
+			if (strcmp(str_get(&fix->nb_val), sym_get_string_value(fix->sym)) != 0)
+			{
+				printf("\t%s: target %s != actual %s\n", 
+					sym_get_name(sym),
+					sym_fix_get_string_value(fix),
+					sym_get_string_value(sym));
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
+/*
+ * Check that conflict in the given table is resolved,
+ * i.e. all its symbols have their target values.
+ */
+static bool verify_resolution(QTableWidget* conflictsTable)
+{
+	for (int i = 0; i < conflictsTable->rowCount(); i++) {
+		auto _symbol = conflictsTable->item(i,0)->text().toUtf8().data();
+		struct symbol *sym = sym_find(_symbol);
+		tristate value  = string_value_to_tristate(conflictsTable->item(i,1)->text());
+			
+		// consider only booleans as conflict symbols
+		if (value != sym_get_tristate_value(sym)) {
+			printf("Conflict symbol %s: target %s != actual %s\n", 
+				sym_get_name(sym),
+				conflictsTable->item(i,1)->text().toUtf8().data(),
+				sym_get_string_value(sym));
+			return false;
+		}
+	}
+
+	return true;
 }
 
 static bool verify_changed_symbols(GArray *diag)
@@ -2121,7 +2204,7 @@ static GHashTable* config_backup()
 		if (val != NULL) {
 			printf("\tDuplicate key: %s %s/%s\n", 
 				sym_get_type_name(sym), sym_get_name(sym), sym->name);
-			print_symbol(sym);
+			//print_symbol(sym);
 			if (strcmp(val, sym_get_string_value(sym)))
 				printf("\t\tvalue has changed: %s -> %s", 
 					val, sym_get_string_value(sym));
@@ -2203,6 +2286,19 @@ static void config_reset(void)
 {
 	// conf_write(".config.temp"); //XXX
 	conf_read(conf_get_configname());
+}
+
+/*
+ * Return the string representation of the given symbol's type
+ */
+static const char* sym_get_type_name(struct symbol *sym) 
+{ 
+	/*
+	 * This is different from sym_type_name(sym->type),
+	 * because sym_get_type() covers some special cases
+	 * related to choice values and MODULES.
+	 */
+	return sym_type_name(sym_get_type(sym));
 }
 
 /*
@@ -2417,6 +2513,58 @@ static void print_config_stats(ConfigList *list)
 		// conflictsView->candidate_symbols, candidates);
 		conf_item_candidates, sym_candidates);
 }
+
+
+static void save_sample_stats() {
+
+	int i, count=0, invalid=0, other=0,
+	// value counts
+	bool_y=0, bool_n=0, tri_y=0, tri_m=0, tri_n=0;
+
+	gstr sample_stats = str_new();
+	str_append(&sample_stats, getenv("ARCH"));
+	str_append(&sample_stats, getenv(";"));
+	str_append(&sample_stats, (char*) conf_get_configname());
+	str_append(&sample_stats, getenv(";"));
+
+	struct symbol* sym;
+	for_all_symbols(i, sym) {
+		count++;
+
+		const char* val = sym_get_string_value(sym);
+
+		switch (sym_get_type(sym)) {
+			case S_BOOLEAN:
+				if (strcmp(val, "y") == 0)
+					bool_y++;
+				else if (strcmp(val, "n") == 0)
+					bool_n++;
+				else
+					invalid++;
+				break;
+			case S_TRISTATE:
+				if (strcmp(val, "y") == 0)
+					tri_y++;
+				else if (strcmp(val, "m") == 0)
+					tri_m++;
+				else if (strcmp(val, "n") == 0)
+					tri_n++;
+				else
+					invalid++;
+				break;
+			default:
+				other++;
+		}
+		// str_append(&result_string, s);
+		// str_append(&result_string, ";");
+	}
+	printf("\n%9s%11s%12s\n", "Sym count", "Boolean", "Tristate");
+	printf("%9s%5s%5s%5s%5s%5s\n", "", "  Y", "  N", "  Y", "  M", "  N");
+	
+	printf("%9d%5d%5d%5d%5d%5d\n", count, bool_y, bool_n, tri_y, tri_m, tri_n);
+	
+}
+
 
 /*
  * Create permutation of the diagnosis with element order specified 
@@ -3722,13 +3870,14 @@ int main(int ac, char** av)
 	configView->setShowRange(true);
 	configView->setShowData(true);
 	// show prompt options
-	configView->setOptionMode(configView->showPromptAction);
-	configView->showPromptAction->setChecked(true);
+	configView->list->setOptionMode(configView->list->showPromptAction);
+	configView->list->showPromptAction->setChecked(true);
 	// auto-resize columns in conflicts view 
 	ConflictsView *conflictsView = v->getConflictsView();
 	conflictsView->conflictsTable->resizeColumnsToContents();
 
 	print_config_stats(configView->list);
+	save_sample_stats();
 	initial_config = config_backup();
 #endif
 	v->show();
