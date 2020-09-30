@@ -37,13 +37,13 @@
 #include <QColor>
 
 #ifdef CONFIGFIX_TEST
-#include <dirent.h>
-#include <time.h>
-#include "cf_utils.h"
-#include "configfix.h"
-#include "cf_print.h"
 #include <algorithm>    // std::next_permutation
 #include <QTextStream>
+#include <dirent.h>
+#include <time.h>
+#include "configfix.h"
+#include "cf_utils.h"
+#include "cf_print.h"
 #endif
 
 static QApplication *configApp;
@@ -79,6 +79,8 @@ static void output_result();
 
 static GHashTable* initial_config;
 static bool sym_has_conflict(struct symbol *sym);
+static int sym_has_blocked_values(struct symbol *sym);
+static tristate random_blocked_value(struct symbol *sym);
 static GHashTable* config_backup(void);
 static int config_compare(GHashTable *backup);
 static void config_reset(void);
@@ -1631,11 +1633,11 @@ void ConflictsView::generateConflict(void)
 				// FIXME - "prefectly random selection"
 				if (rand() < 1000000) {
 					addSymbol(item->menu);
-					// set wanted value (reverse of current)
+					// set target value (reverse of current)
 					tristate current = sym_get_tristate_value(sym);
-					tristate wanted = current == yes ? no : yes;
+					tristate target = random_blocked_value(sym); //current == yes ? no : yes;
 					conflictsTable->setItem(conflictsTable->rowCount()-1,1,
-						new QTableWidgetItem(tristate_value_to_string(wanted)));
+						new QTableWidgetItem(tristate_value_to_string(target)));
 				}
 			}
 
@@ -2488,6 +2490,9 @@ static void print_config_stats(ConfigList *list)
 	// alternative counts by iterating symbols
 	int i, sym_candidates=0, promptless_unchangeable=0;
 	count=0, invisible=0, unknown=0, nonchangeable=0, promptless=0;
+	//DEBUG
+	int dep_mod=0, blocked_1=0, blocked_2=0, blocked_3=0, blocked_4=0;
+	//DEBUG 
 
 	for_all_symbols(i, sym) {
 		count++;
@@ -2500,10 +2505,54 @@ static void print_config_stats(ConfigList *list)
 			nonchangeable++;
 		if (sym_get_type(sym) == S_UNKNOWN)
 			unknown++;
-		if (sym_has_conflict(sym)) //(!sym_is_changeable(sym) && sym_has_prompt(sym))
+		if (sym_has_conflict(sym)) 
 			sym_candidates++;
 		if (!sym_is_changeable(sym) && !sym_has_prompt(sym))
 			promptless_unchangeable++;
+		//DEBUG
+		if (expr_contains_symbol(sym->dir_dep.expr, &symbol_mod))
+			dep_mod++;
+		if (sym_has_blocked_values(sym) == 1)
+			blocked_1++;
+		if (sym_has_blocked_values(sym) == 2)
+			blocked_2++;
+		if (sym_has_blocked_values(sym) == 3)
+			blocked_3++;
+
+		/* // print symbol details
+		if (!sym_is_choice(sym) &&
+			// sym_is_changeable(sym) &&
+			sym_has_conflict(sym) &&
+			sym_has_blocked_values(sym)) {
+		//DEBUG SYMBOL
+			printf("\t%s%s %s (visible: %s, changeable: %s, flags: %#x):\n\tcurr = %s, def[S_DEF_USER] = %s\n", 
+				sym_type_name(sym->type), sym_is_choice(sym) ? " choice" : "",
+				sym_get_name(sym), 
+				sym->visible == no ? "n" : (sym->visible == mod ? "m" : "y"), 
+				sym_is_changeable(sym) ? "true" : "false", sym->flags, 
+				sym_get_string_value(sym), 
+				sym->def[S_DEF_USER].tri == no ? "n" : (sym->def[S_DEF_USER].tri == mod ? "m" : "y")); 
+			printf("\tconflict candidate: %s\n", 
+				sym_has_conflict(sym) ? "true" : "false");
+			printf("\tdepends on 'mod': %s\n",
+				expr_depends_symbol(sym->dir_dep.expr, &symbol_mod) ?
+					"true" : "false");
+			printf("\tdeps contain 'mod': %s\n",
+				expr_contains_symbol(sym->dir_dep.expr, &symbol_mod) ? 
+					"true" : "false");
+			printf("\t%i blocked: no: %s, mod: %s, yes: %s\n",
+				sym_has_blocked_values(sym),
+				sym_tristate_within_range(sym, no) ? "false" : "true",
+				sym_get_type(sym) == S_BOOLEAN ? 
+					"-" : sym_tristate_within_range(sym, mod) ? "false" : "true",
+				expr_contains_symbol(sym->dir_dep.expr, &symbol_mod) ?
+					"-" : (sym_tristate_within_range(sym, yes) ? "false" : "true"));
+			// getchar();
+			//DEBUG SYMBOL
+		}
+		if (sym_has_blocked_values(sym) > 3)
+			printf("%s: > 3 blocked values!\n", sym_get_name(sym));
+		//DEBUG */
 	}
 
 	printf("%i symbols: %i prompt-less, %i invisible, %i unknown type, %i non-changeable, %i prompt-less & unchangeable\n", 
@@ -2512,6 +2561,13 @@ static void print_config_stats(ConfigList *list)
 	printf("Conflict candidates: %i config items (%i symbols)\n", 
 		// conflictsView->candidate_symbols, candidates);
 		conf_item_candidates, sym_candidates);
+	//DEBUG
+	printf("Depend on 'mod': %i\n", dep_mod);
+	printf("Blocked values: 1 - %i, 2 - %i, 3 - %i, total - %i\n", 
+		blocked_1, blocked_2, blocked_3, 
+		(blocked_1 + blocked_2 + blocked_3));
+
+	//DEBUG
 }
 
 
@@ -2558,11 +2614,13 @@ static void save_sample_stats() {
 		// str_append(&result_string, s);
 		// str_append(&result_string, ";");
 	}
-	printf("\n%9s%11s%12s\n", "Sym count", "Boolean", "Tristate");
-	printf("%9s%5s%5s%5s%5s%5s\n", "", "  Y", "  N", "  Y", "  M", "  N");
+	printf("\n%9s %9s  %12s\n", "Sym count", "Boolean", "Tristate");
+	printf("%9s %10s  %12s\n", "---------", "---------", "--------------");
+
+	printf("%9s %5s%5s %5s%5s%5s\n", "", "  Y", "  N", "  Y", "  M", "  N");
 	
-	printf("%9d%5d%5d%5d%5d%5d\n", count, bool_y, bool_n, tri_y, tri_m, tri_n);
-	
+	printf("%9d %5d%5d %5d%5d%5d\n", 
+		count, bool_y, bool_n, tri_y, tri_m, tri_n);
 }
 
 
@@ -2727,6 +2785,9 @@ static char* get_config_dir(void)
 		return "./";
 }
 
+/*
+ * Construct path to the RESULTS_FILE
+ */
 static char* get_results_file(void)
 {
 	gstr filename = str_new();
@@ -2828,10 +2889,93 @@ static bool sym_has_conflict(struct symbol *sym)
 	return (
 		// has prompt (visible to user)
 		sym_has_prompt(sym) && 
-		// cannot be changed
-		!sym_is_changeable(sym) && 
+		// is bool or tristate
+		sym_is_boolean(sym) &&
 		// is not 'choice' (choice values should be used instead)
-		!sym_is_choice(sym));
+		!sym_is_choice(sym)) &&
+		// cannot be changed
+		//!sym_is_changeable(sym)
+		// has at least 1 blocked value 
+		sym_has_blocked_values(sym);
+}
+
+/**
+ * For a visible boolean or tristate symbol, returns the number of 
+ * its possible values that cannot be set (not within range).
+ * Otherwise, returns 0 (including other symbol types).
+ */
+static int sym_has_blocked_values(struct symbol *sym)
+{
+	if (!sym_is_boolean(sym))// || sym->visible == no)
+		return 0;
+
+	int result = 0;
+
+	if (!sym_tristate_within_range(sym, no))
+		result++;
+	
+	if (sym_get_type(sym) == S_TRISTATE && 
+		!sym_tristate_within_range(sym, mod))
+		result++;
+
+	/* some tristates depend on 'mod', can never be set to 'yes */
+	if (!expr_contains_symbol(sym->dir_dep.expr, &symbol_mod) &&
+		!sym_tristate_within_range(sym, yes))
+		result++;
+
+	return result;
+}
+
+/**
+ * Selects a tristate value currently blocked for given symbol.
+ * For a tristate symbol, if two values are blocked, makes a random selection.
+ */
+static tristate random_blocked_value(struct symbol *sym)
+{
+	tristate *values = NULL;
+	int no_values=0;
+
+	// dynamically allocate at most 2 values (excluding current)
+	if (sym_get_tristate_value(sym) != no &&
+		!sym_tristate_within_range(sym, no)) 
+		{
+			no_values++;
+			values = (tristate*) realloc(values, 
+				no_values * sizeof(tristate));
+			values[no_values-1] = no;
+		}
+
+	if (sym_get_type(sym) == S_TRISTATE &&
+		sym_get_tristate_value(sym) != mod &&
+		!sym_tristate_within_range(sym, mod)) 
+		{
+			no_values++;
+			values = (tristate*) realloc(values, 
+				no_values * sizeof(tristate));
+			values[no_values-1] = mod;
+		}
+
+	if (sym_get_tristate_value(sym) != yes &&
+		!expr_contains_symbol(sym->dir_dep.expr, &symbol_mod) &&
+		!sym_tristate_within_range(sym, yes)) 
+		{
+			no_values++;
+			values = (tristate*) realloc(values, 
+				no_values * sizeof(tristate));
+			values[no_values-1] = yes;
+		}
+
+	switch(no_values) {
+	case 1:
+		return values[0];
+	case 2:
+		return values[rand() % no_values];
+	default:
+		printf("Error: too many random values for %s\n",
+			sym_get_name(sym));
+	}
+	
+	return no;
 }
 #endif //CONFIGFIX_TEST
 
