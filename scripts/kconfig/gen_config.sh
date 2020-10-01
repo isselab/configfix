@@ -64,30 +64,49 @@ echo "
 You selected $CHOICE. ARCH is set to '$ARCH'
 "
 
-# generate config, forward KCONFIG_SEED printout
+# probabilities list
+PROBABILITIES="10 20 30 40 50 60 70 80 90"
+
 cd ../../
-make randconfig 2> generate.sh
 
-# create directories if missing
-CONFIG_PATH=$CONFIGFIX_TEST_PATH/$ARCH/config/
-mkdir -p $CONFIG_PATH
+# for each probability
+for PROBABILITY in $PROBABILITIES; do
 
-# move .config
-mv .config $CONFIG_PATH
+  CONFIG_FILENAME=.config.$PROBABILITY
 
-# print generate.sh (may contain make and Kconfig warnings)
-cat generate.sh
-# move generate.sh
-chmod +x generate.sh
-mv generate.sh $CONFIG_PATH
+  # generate config, forward KCONFIG_SEED printout
+  export KCONFIG_PROBABILITY=$PROBABILITY
+  make randconfig 2> generate.sh
+  
+  # create directories if missing
+  CONFIG_PATH=$CONFIGFIX_TEST_PATH/$ARCH/config.$PROBABILITY
+  mkdir -p $CONFIG_PATH
+  
+  # move .config
+  mv .config $CONFIG_PATH/$CONFIG_FILENAME
+  
+  # print generate.sh (may contain make and Kconfig warnings)
+  cat generate.sh
+  # move generate.sh
+  chmod +x generate.sh
+  mv generate.sh $CONFIG_PATH
 
-# create run.sh, substitute ARCH and SRCARCH for @
-cp scripts/kconfig/run_template.sh run.sh
-sed -i "s/ ARCH=@/ ARCH=$ARCH/g" run.sh
-sed -i "s/ SRCARCH=@/ SRCARCH=$SRCARCH/g" run.sh
-# move run.sh
-chmod +x run.sh
-mv run.sh $CONFIG_PATH
+  # create run.sh, substitute ARCH and SRCARCH for @
+  cp scripts/kconfig/run_template.sh run.sh
+  sed -i "s/ ARCH=@/ ARCH=$ARCH/g" run.sh
+  sed -i "s/ SRCARCH=@/ SRCARCH=$SRCARCH/g" run.sh
+  sed -i "s/ @CONFIG_FILENAME@/ $CONFIG_FILENAME/g" run.sh
+
+  # move run.sh
+  chmod +x run.sh
+  mv run.sh $CONFIG_PATH
+done
+
+
+
+
+
+
 
 echo "
 .config, generate.sh, and run.sh moved to $CONFIG_PATH
@@ -97,3 +116,4 @@ echo "
 unset ARCH
 unset SRCARCH
 unset CONFIG_PATH
+unset KCONFIG_PROBABILITY
