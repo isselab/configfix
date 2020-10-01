@@ -91,26 +91,18 @@ for PROBABILITY in $PROBABILITIES; do
   chmod +x generate.sh
   mv generate.sh $CONFIG_PATH
 
-  # create run.sh, substitute ARCH and SRCARCH for @
+  # create run.sh, substitute variable values for placeholders
   cp scripts/kconfig/run_template.sh run.sh
   sed -i "s/ ARCH=@/ ARCH=$ARCH/g" run.sh
   sed -i "s/ SRCARCH=@/ SRCARCH=$SRCARCH/g" run.sh
   sed -i "s/ @CONFIG_FILENAME@/ $CONFIG_FILENAME/g" run.sh
+  sed -i "s/ CONFIGFIX_TEST_PROBABILITY=@/ CONFIGFIX_TEST_PROBABILITY=$PROBABILITY/g" run.sh
 
   # move run.sh
   chmod +x run.sh
   mv run.sh $CONFIG_PATH
 done
 
-
-
-
-
-
-
-echo "
-.config, generate.sh, and run.sh moved to $CONFIG_PATH
-"
 
 # unset variables
 unset ARCH

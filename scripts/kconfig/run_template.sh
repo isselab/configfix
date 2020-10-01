@@ -13,11 +13,6 @@ if [ -z ${CONFIGFIX_PATH} ]; then
     exit    
 fi
 
-# Copy configuration sample - must be in the source tree
-cp @CONFIG_FILENAME@ $CONFIGFIX_PATH/.config
-# Point KCONFIG_CONFIG to configuration sample
-export KCONFIG_CONFIG=.config #"$PWD/.config"
-
 # Set variables that Kconfig model depends on, and which
 # are usually set in Makefiles before Kconfig is parsed.
 export VERSION=5
@@ -30,12 +25,23 @@ export ARCH=@
 export SRCARCH=@
 export srctree=. #$CONFIGFIX_PATH
 
+# Set variable that 'cftestconfig' depends on.
+export CONFIGFIX_TEST_CONFIG_DIR=$PWD
+export CONFIGFIX_TEST_PROBABILITY=@
+
+# Copy configuration sample - must be in the source tree
+cp @CONFIG_FILENAME@ $CONFIGFIX_PATH/.config
+# Point KCONFIG_CONFIG to configuration sample
+export KCONFIG_CONFIG=.config #"$PWD/.config"
+
 # run xconfig via make
 cd $CONFIGFIX_PATH
 # scripts/kconfig/qconf Kconfig "$@" # pass eventual extra arguments to xconfig
 make cftestconfig
 
 # unset variables
+unset CONFIGFIX_TEST_CONFIG_DIR
+unset CONFIGFIX_TEST_PROBABILITY
 unset KCONFIG_CONFIG
 unset VERSION
 unset PATCHLEVEL
