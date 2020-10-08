@@ -1442,22 +1442,22 @@ void ConflictsView::calculateFixes(void)
 	time = ((double) (end - start)) / CLOCKS_PER_SEC;
 	printf("Conflict resolution time = %.6f secs.\n\n", time);
 	// result column 7 - resolution time
-	str_printf(&result_string, "%.6f;", time); 
+	str_printf(&result_string, "%.6f,", time); 
 #endif
 	free(p);
 	g_array_free (wanted_symbols,FALSE);
 	if (solution_output == nullptr || solution_output->len == 0)
 	{
 #ifdef CONFIGFIX_TEST
-		// result column 6 - no. diagnoses
-		append_result("0;");	
+		// result column 8 - no. diagnoses
+		append_result("0,");	
 #endif
 		return;
 	}
 	std::cout << "solution length = " << unsigned(solution_output->len) << std::endl;
 #ifdef CONFIGFIX_TEST
 	// result column 8 - no. diagnoses, column 9 - comment
-	str_printf(&result_string, "%i;;", solution_output->len);
+	str_printf(&result_string, "%i,,", solution_output->len);
 #endif
 	solutionSelector->clear();
 	for (int i = 0; i < solution_output->len; i++)
@@ -1797,7 +1797,7 @@ void ConflictsView::saveConflict(void)
 	// result column 5 - Conflict filename
 	append_result((char*) str_get(&filename));
 	// result column 6 - Conflict size
-	str_printf(&result_string, "%i;", conflictsTable->rowCount()); 
+	str_printf(&result_string, "%i,", conflictsTable->rowCount()); 
 
 	fclose(f);
 	printf("\n#\n# conflict saved to %s\n#\n\n", str_get(&filename));
@@ -1869,7 +1869,7 @@ static bool verify_diagnosis(int i, const char *result_prefix,
 	 */
 	result_string = str_new();
 	str_append(&result_string, result_prefix);
-	str_printf(&result_string, "%i;%i;", i, size);
+	str_printf(&result_string, "%i,%i,", i, size);
 
 	// print diagnosis info
 	printf("\n-------------------------------\nDiagnosis %i\n", i);
@@ -2691,9 +2691,9 @@ static void print_sample_stats() {
 
 	gstr sample_stats = str_new();
 	str_append(&sample_stats, getenv("ARCH"));
-	str_append(&sample_stats, getenv(";"));
+	str_append(&sample_stats, ";");
 	str_append(&sample_stats, (char*) conf_get_configname());
-	str_append(&sample_stats, getenv(";"));
+	str_append(&sample_stats, ";");
 
 	struct symbol* sym;
 	for_all_symbols(i, sym) {
