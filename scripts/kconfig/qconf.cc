@@ -1645,7 +1645,23 @@ void ConflictsView::generateConflict(void)
 	conflictsTable->setRowCount(0);
 
 	// create uniform random distribution
-	//static std::uniform_int_distribution<int> dist(1, no_conflict_candidates);
+	// static std::uniform_int_distribution<int> dist(1, no_conflict_candidates);
+
+	// struct symbol *sym;
+	// while (conflictsTable->rowCount() < conflict_size) 
+	// {
+	// }
+
+	// int index;
+	// for (int z=0;z<5;z++) {
+	// 	index = dist(gen);
+	// 	sym = get_conflict_sym(index);
+	// 	printf("Symbol with index %i %s %s conflict\n",
+	// 		index, sym_get_name(sym), 
+	// 		sym_has_conflict(sym) ? "HAS" : "DOES NOT HAVE");
+	// }
+	// getchar();
+
 
 	srand(time(0));
 
@@ -2954,7 +2970,7 @@ static void append_result(char *s)
 {
 	if (str_get(&result_string)) {
 		str_append(&result_string, s);
-		str_append(&result_string, ";");	
+		str_append(&result_string, ",");	
 	} else
 		printf("Warning: result string is empty");
 }
@@ -3082,7 +3098,9 @@ static tristate random_blocked_value(struct symbol *sym)
 
 /**
  * Returns conflict symbol with given 1-based index 
- * (which can be rancomly generated).
+ * (which can be rancomly generated), 
+ * assuming a consistent symbol iteration order.
+ * 
  * This function iterates all symbols, and increases a counter
  * for every conflicting symbol (see sym_has_conflict()). As
  * soon as the counter equals the passed argument, the symbol is returned.
