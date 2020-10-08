@@ -4123,7 +4123,7 @@ int main(int ac, char** av)
 #endif
 
 	configSettings = new ConfigSettings();
-	configSettings->beginGroup("/kemacs config/qconf");
+	configSettings->beginGroup("/kconfig/qconf");
 	v = new ConfigMainWindow();
 
 	//zconfdump(stdout);
