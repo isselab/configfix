@@ -38,9 +38,11 @@
 
 #ifdef CONFIGFIX_TEST
 #include <algorithm>    // std::next_permutation
+#include <random>
 #include <QTextStream>
 #include <dirent.h>
 #include <time.h>
+
 #include "configfix.h"
 #include "cf_utils.h"
 #include "cf_print.h"
@@ -72,7 +74,16 @@ static int testing_mode = RANDOM_TESTING;
 // default conflict size, use -c N command line argument to change
 static int conflict_size = 1;
 static char* conflict_dir;
-// result string to be written to results.csv
+// tristates in configuration space
+static bool tristates = false;
+// number of symbols that conflict with current config
+static int no_conflict_candidates = 0;
+// random number generation
+static std::random_device seed;
+static std::mt19937 gen(seed());
+static struct symbol* get_conflict_sym(int i);
+
+// result string to be written to RESULTS_FILE
 static gstr result_string = str_new();
 static void append_result(char *str);
 static void output_result();
@@ -91,9 +102,8 @@ static bool diag_dependencies_met(GArray *diag);
 static bool symbol_has_changed(struct symbol *sym, GHashTable *backup);
 static void print_setup(const char *name);
 static void print_config_stats(ConfigList *list);
-static void save_sample_stats();
+static void print_sample_stats();
 static GArray* rearrange_diagnosis(GArray *diag, int fix_idxs[]);
-// static void save_diagnosis(GArray *diag, char* filename);
 static void save_diagnosis(GArray *diag, char* file_prefix, bool valid_diag);
 static void save_diag_2(GArray *diag, char* file_prefix, bool valid_diag);
 static bool verify_diagnosis(int i, const char *result_prefix, GArray *diag, QTableWidget* conflictsTable);
@@ -1431,8 +1441,7 @@ void ConflictsView::calculateFixes(void)
 	end = clock();
 	time = ((double) (end - start)) / CLOCKS_PER_SEC;
 	printf("Conflict resolution time = %.6f secs.\n\n", time);
-	// result column 5 - resolution time
-	// printf("Result string: %s\n", str_get(&result_string));
+	// result column 7 - resolution time
 	str_printf(&result_string, "%.6f;", time); 
 #endif
 	free(p);
@@ -1447,7 +1456,7 @@ void ConflictsView::calculateFixes(void)
 	}
 	std::cout << "solution length = " << unsigned(solution_output->len) << std::endl;
 #ifdef CONFIGFIX_TEST
-	// result column 6 - no. diagnoses
+	// result column 8 - no. diagnoses, column 9 - comment
 	str_printf(&result_string, "%i;;", solution_output->len);
 #endif
 	solutionSelector->clear();
@@ -1497,9 +1506,6 @@ void ConflictsView::switchTestingMode()
  * -DCONFIGFIX_TEST during qconf.moc compilation.
  */
 #ifdef CONFIGFIX_TEST
-	// if (solution_output == nullptr || solution_output->len == 0) {
-		// return;
-	// }
 	/*
 	 * Switch to MANUAL_TESTING mode if solution 
 	 * for manually created conflict is found.
@@ -1513,7 +1519,7 @@ void ConflictsView::switchTestingMode()
 
 /*
  * In RANDOM_TESTING mode, generate random conflict
- * amd calculate fixes for it.
+ * and calculate fixes for it.
  * In both RANDOM_TESTING and MANUAL_TESTING mode
  * verify fixes, if they are present.
  */
@@ -1526,68 +1532,103 @@ void ConflictsView::testRandomConlict(void)
  */
 #ifdef CONFIGFIX_TEST
 
-	// initialise result string
-	result_string = str_new();
-	// column 1 - Architecture
-	append_result(getenv("ARCH"));
-	// column 2 - configuration sample
-	append_result((char*) conf_get_configname());
-
-	// RANDOM_TESTING - generate and resolve random conflicts
-	if (testing_mode == RANDOM_TESTING) {
-
-		generateConflict();
-		if(conflictsTable->rowCount() == 0) {
-			printf("Conflicts table is empty\n");
-			return;
-		}
-		saveConflict();
-		calculateFixes();
-	}
-
-	//DEBUG
-	printf("\n--------------\nResult prefix\n--------------\n%s\n", str_get(&result_string));
-	//DEBUG
-
-	// output result and return if no solution found
-	if (solution_output == nullptr || solution_output->len == 0) {
-		output_result();
-		return;
-	} 
-	// otherwise verify diagnoses - both RANDOM_TESTING and MANUAL_TESTING
-	else {
-		// common result prefix for all diagnoses
-		gstr result_prefix = str_new();
-		str_append(&result_prefix, str_get(&result_string));
-		str_free(&result_string);
-
-		// both RANDOM_TESTING and MANUAL_TESTING - verify diagnoses
-		verifyDiagnoses(str_get(&result_prefix));
-
-		// reset configuration
-		printf("Restoring initial configuration... ");
-		emit(refreshMenu());
-		config_reset();
-		emit(refreshMenu());
-		if (config_compare(initial_config) != 0)
-			printf("ERROR: configuration and backup mismatch\n");
-		else 
-			printf("OK\n");
-
-		// FIXME move to verifyDiagnoses?
-		// output_result();
-	}
-
-	/* 
-	 * If the conflict was created manually and resolved
-	 * by clicking the 'Verify Fixes' button, switch to 
-	 * RANDOM_TESTING mode.
-	 */
+	/* In MANUAL_TESTING mode, only verify diagnoses */
 	if (testing_mode == MANUAL_TESTING) {
+		verifyDiagnoses(""); // result prefix not needed
+		/* 
+	     * If the conflict was created manually and resolved
+	 	 * by clicking the 'Verify Fixes' button, switch to 
+		 * RANDOM_TESTING mode.
+		 */
 		testConflictAction->setText("Test Random Conflict");
 		testing_mode = RANDOM_TESTING;
-		// print result string to screen
+		return;
 	} 
+
+
+	/* 
+	 * In RANDOM_TESTING mode, generate and resolve a number
+	 * of random conflicts, verify fixes, and save results to file.
+	 */
+	if (testing_mode == RANDOM_TESTING) {
+
+		// generate conflists with 1, 2, and 3 symbols
+		for (conflict_size = 1; conflict_size <= 3; conflict_size++) 
+		// 5 of each
+		for (int i=0; i<5; i++) 
+		{
+			/* If current conflict_dir exists (conflict.txt was saved 
+			   there), this call, will re-calculate that value */
+			conflict_dir = get_conflict_dir();
+
+			// initialise result string
+			result_string = str_new();
+			// column 1 - architecture
+			append_result(getenv("ARCH"));
+			// column 2 - configuration sample
+			append_result((char*) conf_get_configname());
+			// column 3 - KCONFIG_PROBABILITY
+			append_result(getenv("CONFIGFIX_TEST_PROBABILITY"));
+			// column 4 - tristates
+			if (tristates)
+				append_result("YES");
+			else
+				append_result("NO");
+				
+			generateConflict();
+			saveConflict();
+			calculateFixes();
+
+			// output result and return if no solution found
+			if (solution_output == nullptr || solution_output->len == 0) {
+				// set remaining result columns to "-"
+				// column 10 - diag. index
+				append_result("-");
+				// column 11 - diag. size
+				append_result("-");
+				// column 12 - Resolved
+				append_result("-");
+				// column 13 - Applied
+				append_result("-");
+				// // column 14 - Reset errors
+				// append_result("-");
+				// // column 15 - Configs match
+				// append_result("-");
+				// // column 16 - Deps. met
+				// append_result("-");
+
+				output_result();
+				// return;
+			} 
+			// otherwise verify diagnoses
+			else {
+				// common result prefix for all diagnoses
+				gstr result_prefix = str_new();
+				str_append(&result_prefix, str_get(&result_string));
+				str_free(&result_string);
+
+				// verify diagnoses
+				verifyDiagnoses(str_get(&result_prefix));
+
+				str_free(&result_prefix);
+
+				// reset configuration
+				// printf("\nRestoring initial configuration... ");
+				// emit(refreshMenu());
+				// config_reset();
+				// emit(refreshMenu());
+				// if (config_compare(initial_config) != 0)
+				// 	printf("ERROR: configuration and backup mismatch\n");
+				// else 
+				// 	printf("OK\n");
+
+				// FIXME move to verifyDiagnoses?
+				// output_result();
+
+			}
+		}
+	}
+
 #endif
 }
 
@@ -1599,12 +1640,14 @@ void ConflictsView::generateConflict(void)
  * -DCONFIGFIX_TEST during qconf.moc compilation.
  */
 #ifdef CONFIGFIX_TEST
+	// clear conflicts table
 	conflictsTable->clearContents();
+	conflictsTable->setRowCount(0);
 
-	// random seed
+	// create uniform random distribution
+	//static std::uniform_int_distribution<int> dist(1, no_conflict_candidates);
+
 	srand(time(0));
-
-	// int conflict_count = 0;
 
 	while (conflictsTable->rowCount() < conflict_size) 
 	{
@@ -1652,10 +1695,30 @@ void ConflictsView::generateConflict(void)
 	conflictsTable->repaint();
 
 	if (conflictsTable->rowCount() == 0) {
-		printf("No conflicts\n");
+		printf("ERROR: No conflict could be generated\n");
 		return;	
 	} else {
-		printf("Conflict includes %i symbols\n", conflictsTable->rowCount());
+		// print conflict
+		printf("Conflict (%i symbols)\n", conflictsTable->rowCount());
+		printf("------------------------------\n");
+		for (int i = 0; i < conflictsTable->rowCount(); i++) {
+			auto _symbol = conflictsTable->item(i,0)->text().toUtf8().data();
+			struct symbol* sym = sym_find(_symbol);
+
+			if (!sym) {
+				printf("ERROR: conflict symbol %s not found\n", _symbol);
+				return;
+			} else if (!sym->name) {
+				printf("ERROR: conflict symbol %s not found\n", _symbol);
+				return;
+			}
+
+			printf("%s: %s => %s\n", 
+				sym->name, 
+				sym_get_string_value(sym),
+				tristate_get_char(string_value_to_tristate(
+					conflictsTable->item(i,1)->text())));
+		}
 	}
 #endif
 }
@@ -1670,19 +1733,23 @@ void ConflictsView::saveConflict(void)
 #ifdef CONFIGFIX_TEST
 	
 	// create directory
-	// char *conflict_dir = get_conflict_dir();
 	QDir().mkpath(conflict_dir);
 
 	// construct filename
-	char filename[
-		strlen(conflict_dir) 
-	    + strlen("conflict.txt")  + 1];
-	sprintf(filename, "%sconflict.txt", conflict_dir);
+	gstr filename = str_new();
+	str_append(&filename, conflict_dir);
+	str_append(&filename, "conflict.txt");
+
+	// char filename[
+	// 	strlen(conflict_dir) 
+	//     + strlen("conflict.txt")  + 1];
+	// sprintf(filename, "%sconflict.txt", conflict_dir);
 	// free(conflict_dir);
 
-    FILE* f = fopen(filename, "w");
+    FILE* f = fopen(str_get(&filename), "w");
     if(!f) {
         printf("Error: could not save conflict\n");
+		str_free(&filename);
 		return;
     }
 
@@ -1697,26 +1764,28 @@ void ConflictsView::saveConflict(void)
 		struct symbol* sym = sym_find(_symbol);
 
 		if (!sym) {
-			printf("Error: conflict symbol %s not found\n", _symbol);
+			printf("ERROR: conflict symbol %s not found\n", _symbol);
 			return;
 		} else if (!sym->name) {
-			printf("Error: conflict symbol %s not found\n", _symbol);
+			printf("ERROR: conflict symbol %s not found\n", _symbol);
 			return;
 		}
 
-		fprintf(f, "%s => %s\n", 
+		fprintf(f, "%s: %s => %s\n", 
 			sym->name, 
+			sym_get_string_value(sym),
 			tristate_get_char(string_value_to_tristate(
 				conflictsTable->item(i,1)->text())));
 	}
 	
-	// result column 3 - Conflict filename
-	append_result(filename);
-	// result column 4 - Conflict size
+	// result column 5 - Conflict filename
+	append_result((char*) str_get(&filename));
+	// result column 6 - Conflict size
 	str_printf(&result_string, "%i;", conflictsTable->rowCount()); 
 
 	fclose(f);
-	printf("\n#\n# conflict saved to %s\n#\n\n", filename);
+	printf("\n#\n# conflict saved to %s\n#\n\n", str_get(&filename));
+	str_free(&filename);
 
 #endif
 }
@@ -1725,8 +1794,8 @@ void ConflictsView::saveConflict(void)
  * Verify all present diagnoses. 
  * 
  * For every diagnosis, construct and output a result string 
- * assuming that values common to the diagnoses are supplied 
- * in the result_prefix.
+ * assuming that values common to all diagnoses (columns 1-8) 
+ * are supplied in the 'result_prefix'.
  */
 void ConflictsView::verifyDiagnoses(const char *result_prefix) // const char*?
 {
@@ -1753,11 +1822,14 @@ void ConflictsView::verifyDiagnoses(const char *result_prefix) // const char*?
 			conflictsTable);
 
 		// reset configuration
+		printf("\nRestoring initial configuration... ");
 		emit(refreshMenu());
 		config_reset();
 		emit(refreshMenu());
 		if (config_compare(initial_config) != 0)
-			printf("\nERROR: could not reset configuration after verifying diagnosis\n");
+			printf("ERROR: could not reset configuration after verifying diagnosis\n");
+		else
+			printf("OK\n");		
 	}
 #endif
 }
@@ -1775,9 +1847,9 @@ static bool verify_diagnosis(int i, const char *result_prefix,
 
 	/* 
 	 * Initialise result string with:
-	 * - prefix (columns 1-7 passed as argument)
-	 * - index  (column 8)
-	 * - size   (column 9)
+	 * - columns 1-9 - prefix passed as argument)
+	 * - column 10 - diag. index
+	 * - column 11 - diag. size
 	 */
 	result_string = str_new();
 	str_append(&result_string, result_prefix);
@@ -1795,10 +1867,12 @@ static bool verify_diagnosis(int i, const char *result_prefix,
 	 */
 	// status flags
 	bool 
-		// check 1 - apply fixes
-		APPLIED = false,      
+		// check 1 - conflict resolved
+		RESOLVED = false,  
+		// check 2 - fix fully applied
+		APPLIED = false,
 		// config reset error
-		ERR_RESET = false,    
+		ERR_RESET = false,
 		// check 2 - save & reload config - should match
 		CONFIGS_MATCH = false,
 		// check 3 - dependencies met
@@ -1807,12 +1881,13 @@ static bool verify_diagnosis(int i, const char *result_prefix,
 		VALID = false; 
 
 
-	/* Check 1 - apply the fixes */
+
+	/* Apply the symbol fixes */
 
 	int permutation_count = 0;
 
 	/* 
-	 * Collect indices in the diagnosis fixes.
+	 * Collect indices of the symbol fixes in the diagnosis.
 	 * std::next_permutation() generates lexicographically larger permutations,
 	 * hence its argument array should be initially sorted in ascending order.
 	 */
@@ -1825,28 +1900,36 @@ static bool verify_diagnosis(int i, const char *result_prefix,
 		permutation = rearrange_diagnosis(diag, fix_idxs);
 		permutation_count++;
 
-		/* Verifying target values directly after apply_fix() may fail */
 		// if (apply_fix(permutation) && verify_resolution(conflictsTable)) {
 		// 	APPLIED = true;
 		// 	verify_fix_target_values(permutation);
 		// 	break;
-		
-		/* Therefore config must be saved before verifying target values */ 
-		if (apply_fix(permutation)) {
-			GHashTable *before_write = config_backup();
-			conf_write(".config.try");
-			// reload, compare
-			conf_read(".config.try");
-			if (config_compare(before_write) != 0)
-				// new values propagated
-				printf(".config.try: config & backup mismatch\n");
-			g_hash_table_destroy(before_write);
 
-			// this function check both conflict and fix symbols
-			if (verify_fix_target_values(permutation)) { // && verify_resolution(conflictsTable)) {
-				APPLIED = true;
-				break;
+		/* Verifying target values directly after apply_fix() may fail.	
+		   Therefore config must be saved before verifying target values. */ 
+		if (apply_fix(permutation)) {
+			// GHashTable *before_write = config_backup();
+			conf_write(".config.applied");
+			// reload, compare
+			// conf_read(".config.applied");
+			// if (config_compare(before_write) != 0)
+			// 	// new values propagated
+			// 	printf(".config.try: config & backup mismatch\n");
+			// g_hash_table_destroy(before_write);
+
+			// check 1 - conflict resolved
+			if (verify_resolution(conflictsTable)) {
+				RESOLVED = true;
 			}
+			// check 2 - fix applied
+			if (verify_fix_target_values(permutation)) { 
+				APPLIED = true;
+			}
+
+			// exit loop if the conflict is resolved
+			if (RESOLVED)
+				break;
+
 		} else {
 			//DEBUG
 			// config_compare(initial_config);
@@ -1860,14 +1943,14 @@ static bool verify_diagnosis(int i, const char *result_prefix,
 				break;
 			}
 			// dot = failed test
-			printf(".");
+			// printf(".");
 
 			g_array_free(permutation, false);
 		} 
 	} while ( std::next_permutation(fix_idxs, fix_idxs+size) );
 
 	printf("%s (%d permutations tested)\n", 
-		APPLIED ? "SUCCESS" : "FAILURE", permutation_count);
+		RESOLVED ? "SUCCESS" : "FAILURE", permutation_count);
 	
 	// g_array_free(permutation, false);
 	g_clear_pointer(&permutation, g_ptr_array_unref);
@@ -1876,24 +1959,24 @@ static bool verify_diagnosis(int i, const char *result_prefix,
 	char diag_prefix[strlen("diagXX") + 1]; 
 	sprintf(diag_prefix, "diag%.2d", i);		
 
-	// save_diagnosis(diag, diag_prefix, APPLIED);
-	save_diag_2(diag, diag_prefix, APPLIED);
+	// save_diagnosis(diag, diag_prefix, RESOLVED);
+	save_diag_2(diag, diag_prefix, RESOLVED);
 
-	// skip remaining checks if fixes were not applied
-	if (!APPLIED) {
-		// column 10 - Valid
-		append_result("NO");
-		// column 11 - Applied
-		append_result((char*) ("NO"));
-		// column 13 - Reset errors
-		append_result((char*) (ERR_RESET ? "YES" : "NO"));
-		output_result();
+	// // skip remaining checks if fixes were not applied
+	// if (!RESOLVED) {
+	// 	// column 12 - Resolved
+	// 	append_result("NO");
+	// 	// column 13 - Applied
+	// 	append_result("NO");
+	// 	// column 14 - Reset errors
+	// 	//append_result((char*) (ERR_RESET ? "YES" : "NO"));
+	// 	output_result();
 
-		return false;
-	}
+	// 	return false;
+	// }
 
 
-    /* Check 2 - save & reload config - should match */
+    /* Save & reload config - should match */
 
 	// filename e.g. /path/to/config/sample/.config.diag09
 	char config_filename[
@@ -1911,46 +1994,49 @@ static bool verify_diagnosis(int i, const char *result_prefix,
 	conf_read(config_filename);
 	if (config_compare(after_write) == 0)
 		CONFIGS_MATCH =  true;
+	else
+		printf("WARNING: reloaded configuration and backup mismatch\n");
 	g_hash_table_destroy(after_write);
 
-	// skip the rest if failed
-	if (!CONFIGS_MATCH) {
-		// column 10 - Valid
-		append_result("NO");
-		// column 11 - Applied
-		append_result((char*) (APPLIED ? "YES" : "NO"));
-		// column 13 - Reset errors
-		append_result((char*) (ERR_RESET ? "YES" : "NO"));
-		// column 14 - Configs match
-		append_result((char*) (CONFIGS_MATCH ? "YES" : "NO"));
-		output_result();
-
-		return false;
-	}
+	// // skip the rest if failed
+	// if (!CONFIGS_MATCH) {
+	// 	// column 12 - Resolved
+	// 	append_result("NO");
+	// 	// column 13 - Applied
+	// 	append_result((char*) (APPLIED ? "YES" : "NO"));
+	// 	// column 14 - Reset errors
+	// 	append_result((char*) (ERR_RESET ? "YES" : "NO"));
+	// 	// column 15 - Configs match
+	// 	append_result((char*) (CONFIGS_MATCH ? "YES" : "NO"));
+	// 	output_result();
+	//
+	//  return false;
+	// }
 
 
 	/* Check 3 - check for unmet dependencies */
 
-	DEPS_MET = diag_dependencies_met(diag);
+	// DEPS_MET = diag_dependencies_met(diag);
 
 
-	/* Calculate final value, output result */
+	/* Output result */
 
-	VALID = APPLIED && !ERR_RESET && CONFIGS_MATCH && DEPS_MET;
-	// column 10 - Valid
-	append_result((char*) (VALID ? "YES" : "NO"));
-	// column 11 - Applied
+	//VALID = APPLIED && !ERR_RESET && CONFIGS_MATCH && DEPS_MET;
+	// column 12 - Resolved
+	append_result((char*) (RESOLVED ? "YES" : "NO"));
+	// column 13 - Applied
 	append_result((char*) (APPLIED ? "YES" : "NO"));
-	// column 13 - Reset errors
-	append_result((char*) (ERR_RESET ? "YES" : "NO"));
-	// column 14 - Configs match
-	append_result((char*) (CONFIGS_MATCH ? "YES" : "NO"));
-	// column 15 - Deps. met
-	append_result((char*) (DEPS_MET ? "YES" : "NO"));
+	// column 14 - Reset errors
+	// append_result((char*) (ERR_RESET ? "YES" : "NO"));
+	// column 15 - Configs match
+	// append_result((char*) (CONFIGS_MATCH ? "YES" : "NO"));
+	// column 16 - Deps. met
+	// append_result((char*) (DEPS_MET ? "YES" : "NO"));
 
 	output_result();
+	str_free(&result_string);
 	
-	return VALID;
+	return RESOLVED;
 
 
 
@@ -2008,7 +2094,8 @@ static bool verify_fix_target_values(GArray *diag)
 
 /*
  * Check that conflict in the given table is resolved,
- * i.e. all its symbols have their target values.
+ * i.e. all its symbols have target values in the
+ * current configuration.
  */
 static bool verify_resolution(QTableWidget* conflictsTable)
 {
@@ -2398,23 +2485,31 @@ static void print_setup(const char* name)
 {
 	printf("\nConfigfix testing enabled:\n");
 	printf("---------------------------\n");
-	printf("%-22s %s\n", "$CC:", getenv("CC"));
-	printf("%-22s %s\n", "$CC_VERSION_TEXT:", getenv("CC_VERSION_TEXT"));
-	printf("%-22s %s\n", "$KERNELVERSION:", getenv("KERNELVERSION"));
-	printf("%-22s %s\n", "$ARCH:", getenv("ARCH"));
-	printf("%-22s %s\n", "$SRCARCH:", getenv("SRCARCH"));
-	printf("%-22s %s\n", "Working directory:", getenv("PWD"));
-	printf("%-22s %s\n", "$srctree:", getenv("srctree"));
-	printf("%-22s %s\n", "Kconfig file:", name);
+	printf("%-27s %s\n", "$CC:", getenv("CC"));
+	printf("%-27s %s\n", "$CC_VERSION_TEXT:", getenv("CC_VERSION_TEXT"));
+	printf("%-27s %s\n", "$KERNELVERSION:", getenv("KERNELVERSION"));
+	printf("%-27s %s\n", "$ARCH:", getenv("ARCH"));
+	printf("%-27s %s\n", "$SRCARCH:", getenv("SRCARCH"));
+	printf("%-27s %s\n", "Working directory:", getenv("PWD"));
+	printf("%-27s %s\n", "$srctree:", getenv("srctree"));
+	printf("%-27s %s\n", "Kconfig file:", name);
 	if (rootmenu.prompt)
-			printf("%-22s %s\n", "Root menu prompt:", rootmenu.prompt->text);
-	printf("%-22s %s %s\n", "Configuration sample:", 
-		// initial configuration file
-		conf_get_configname(), 
-		// either set in KCONFIG_CONFIG or default '.config'
-		""); //getenv("KCONFIG_CONFIG") ? "(via KCONFIG_CONFIG)" : "(default)");
-	//printf("%-22s %s (len=%d)\n", "Config dir:", get_config_dir(), strlen(get_config_dir()));
-	printf("%-22s %d\n", "Conflict size:", conflict_size);
+			printf("%-27s %s\n\n", "Root menu prompt:", rootmenu.prompt->text);
+
+	printf("%-27s %s\n", 
+		"CONFIGFIX_PATH:", getenv("CONFIGFIX_PATH"));	
+	printf("%-27s %s\n", 
+		"CONFIGFIX_TEST_PATH:", getenv("CONFIGFIX_TEST_PATH"));
+	printf("%-27s %s\n", "Results file:", get_results_file());
+	printf("%-27s %s\n", 
+		"CONFIGFIX_TEST_CONFIG_DIR:", getenv("CONFIGFIX_TEST_CONFIG_DIR"));
+	printf("%-27s %s\n", "Configuration sample:", conf_get_configname());
+	printf("%-27s %s\n", 
+		"CONFIGFIX_TEST_PROBABILITY:", getenv("CONFIGFIX_TEST_PROBABILITY"));
+		// conflict_dir = get_conflict_dir();
+	// printf("%-27s %s\n", 
+		// "Conflict directory:", conflict_dir);
+	printf("%-27s %d\n", "Conflict size:", conflict_size);
 }
 
 /*
@@ -2559,19 +2654,20 @@ static void print_config_stats(ConfigList *list)
 		count, promptless, invisible, unknown, nonchangeable, promptless_unchangeable);
 	
 	printf("Conflict candidates: %i config items (%i symbols)\n", 
-		// conflictsView->candidate_symbols, candidates);
 		conf_item_candidates, sym_candidates);
+	// set static variable
+	no_conflict_candidates = sym_candidates;
+
 	//DEBUG
 	printf("Depend on 'mod': %i\n", dep_mod);
 	printf("Blocked values: 1 - %i, 2 - %i, 3 - %i, total - %i\n", 
 		blocked_1, blocked_2, blocked_3, 
 		(blocked_1 + blocked_2 + blocked_3));
-
 	//DEBUG
 }
 
 
-static void save_sample_stats() {
+static void print_sample_stats() {
 
 	int i, count=0, invalid=0, other=0,
 	// value counts
@@ -2614,13 +2710,17 @@ static void save_sample_stats() {
 		// str_append(&result_string, s);
 		// str_append(&result_string, ";");
 	}
-	printf("\n%9s %9s  %12s\n", "Sym count", "Boolean", "Tristate");
-	printf("%9s %10s  %12s\n", "---------", "---------", "--------------");
 
-	printf("%9s %5s%5s %5s%5s%5s\n", "", "  Y", "  N", "  Y", "  M", "  N");
+	printf("\n%9s  %10s  %16s\n", "Sym count", "Boolean", "Tristates");
+	printf("%9s  %13s  %16s\n",  "---------", "------ ------", "----- ----- -----");
+
+	printf("%9s  %6s %6s  %5s %5s %5s\n", "", "  Y", "  N", "  Y", "  M", "  N");
 	
-	printf("%9d %5d%5d %5d%5d%5d\n", 
+	printf("%9d  %6d %6d  %5d %5d %5d\n", 
 		count, bool_y, bool_n, tri_y, tri_m, tri_n);
+	
+	if (tri_y+tri_m+tri_n > 0)
+		tristates = true;
 }
 
 
@@ -2664,7 +2764,7 @@ static void save_diagnosis(GArray *diag, char* file_prefix, bool valid_diag)
 	sprintf(filename, "%s%s%s.txt", 
 		conflict_dir, file_prefix, 
 		valid_diag ? ".VALID" : ".INVALID");
-	printf("Conflict directory: %s\n", conflict_dir);
+//	printf("Conflict directory: %s\n", conflict_dir);
 	// free(conflict_dir);
 
 //DEBUG
@@ -2709,34 +2809,24 @@ static void save_diagnosis(GArray *diag, char* file_prefix, bool valid_diag)
 
 static void save_diag_2(GArray *diag, char* file_prefix, bool valid_diag)
 {
-	// char *conflict_dir = get_conflict_dir();
-	// char filename[
-	// 	strlen(conflict_dir) 
-	//     + strlen("diag.txt")  + 1];
-	// sprintf(filename, "%sdiag.txt", conflict_dir);
-	// free(conflict_dir);
+	// char *configfix_path = getenv("CONFIGFIX_PATH");
+	// if (!configfix_path)
+	// 	configfix_path = "";
+	// char pathname[
+	// 	strlen(configfix_path)
+	// 	+ strlen(conflict_dir) + 1];
+	// sprintf(pathname, "%s%s", configfix_path, conflict_dir);
 
-	char *configfix_path = getenv("CONFIGFIX_PATH");
-	if (!configfix_path)
-		configfix_path = "";
-		// (char*) getenv("CONFIGFIX_PATH") : "";
-	// char *conflict_dir = get_conflict_dir();
-	char pathname[
-		strlen(configfix_path)
-		+ strlen(conflict_dir) + 1];
-	sprintf(pathname, "%s%s", configfix_path, conflict_dir);
-	// free(conflict_dir);
-
-	QDir().mkpath(pathname);
+	// QDir().mkpath(pathname);
 
 	char filename[
-		strlen(pathname) 
+		strlen(conflict_dir) 
 		+ strlen(file_prefix)
 		+ strlen(valid_diag ? ".VALID" : ".INVALID")
 		+ strlen(".txt") + 1];
 
 	sprintf(filename, "%s%s%s.txt", 
-		pathname, file_prefix, 
+		conflict_dir, file_prefix, 
 		valid_diag ? ".VALID" : ".INVALID");
 	
     QFile file(filename);
@@ -2775,14 +2865,16 @@ static void save_diag_2(GArray *diag, char* file_prefix, bool valid_diag)
  */
 static char* get_config_dir(void)
 {
-	char *config_dir = (char*) conf_get_configname();
+	// char *config_dir = (char*) conf_get_configname();
 	// if config filename is a path
-	if (strrchr(config_dir, '/')) {
-		// drop its contents past the last slash
-		strrchr(config_dir, '/')[1] = 0;
-		return config_dir;
-	} else
-		return "./";
+	// if (strrchr(config_dir, '/')) {
+	// 	// drop its contents past the last slash
+	// 	strrchr(config_dir, '/')[1] = 0;
+	// 	return config_dir;
+	if (getenv("CONFIGFIX_TEST_CONFIG_DIR"))
+		return getenv("CONFIGFIX_TEST_CONFIG_DIR");
+	else
+		return ".";
 }
 
 /*
@@ -2805,7 +2897,7 @@ static char* get_results_file(void)
 /*
  * Returns a path for saving a next conflict 
  * for the current configuration sample.
- * The result is dynamically allocted and must be freed.
+ * The result is dynamically allocated and must be freed.
  */
 static char* get_conflict_dir()
 {
@@ -2819,7 +2911,7 @@ static char* get_conflict_dir()
         return NULL; 
     } 
   
-	int current_conflict_num, next_conflict_num = 1;
+	int next_conflict_num = 1;
 
     // iterate it
     while ((de = readdir(dr)) != NULL) 
@@ -2838,10 +2930,20 @@ static char* get_conflict_dir()
   
     closedir(dr);
 	
-	// e.g. /path/to/config/sample/conflict.05/
+	// construct path e.g. /path/to/config/sample/conflict.05/
+	// gstr pathname = str_new();
+	// str_append(&pathname, get_config_dir());
+	// str_printf(&pathname, "/conflict.%.2d/", next_conflict_num);
+
 	char *conflict_dir = (char*) malloc(
-		sizeof(char) * (strlen(get_config_dir()) + strlen("conflict.XX/") + 1));
-	sprintf(conflict_dir, "%sconflict.%.2d/", get_config_dir(), next_conflict_num);
+		sizeof(char) * strlen(get_config_dir() 
+		+ strlen("/conflict.XX/") + 1));
+	sprintf(conflict_dir, "%s/conflict.%.2d/", 
+		get_config_dir(), next_conflict_num);
+
+	// char *result = (char*) str_get(&pathname);
+	// str_free(&pathname);
+
 	return conflict_dir; 
 }
 
@@ -2977,6 +3079,29 @@ static tristate random_blocked_value(struct symbol *sym)
 	
 	return no;
 }
+
+/**
+ * Returns conflict symbol with given 1-based index 
+ * (which can be rancomly generated).
+ * This function iterates all symbols, and increases a counter
+ * for every conflicting symbol (see sym_has_conflict()). As
+ * soon as the counter equals the passed argument, the symbol is returned.
+ */
+static struct symbol* get_conflict_sym(int i)
+{
+	struct symbol *sym;
+	int j = 0, cnt = 0;
+
+	for_all_symbols(j, sym) {
+		if (sym_has_conflict(sym))
+			cnt++;
+		if (cnt == i)
+			return sym;
+	}
+
+	return NULL;
+}
+
 #endif //CONFIGFIX_TEST
 
 ConflictsView::~ConflictsView(void)
@@ -3992,14 +4117,13 @@ int main(int ac, char** av)
 	// 		&& av[3] && atoi(av[3]) > 0)
 	// 		conflict_size = atoi(av[3]);
 	// }
-
-	print_setup(name);
 	conflict_dir = get_conflict_dir();
-	printf("\nConflict directory: %s\n", conflict_dir);
+	print_setup(name);
+
 #endif
 
 	configSettings = new ConfigSettings();
-	configSettings->beginGroup("/kconfig/qconf");
+	configSettings->beginGroup("/kemacs config/qconf");
 	v = new ConfigMainWindow();
 
 	//zconfdump(stdout);
@@ -4021,7 +4145,7 @@ int main(int ac, char** av)
 	conflictsView->conflictsTable->resizeColumnsToContents();
 
 	print_config_stats(configView->list);
-	save_sample_stats();
+	print_sample_stats();
 	initial_config = config_backup();
 #endif
 	v->show();
