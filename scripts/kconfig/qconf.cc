@@ -2631,13 +2631,16 @@ static void print_sample_stats() {
 				other++;
 		}
 	}
-	printf("\n%9s %9s  %12s\n", "Sym count", "Boolean", "Tristate");
-	printf("%9s %10s  %12s\n", "---------", "---------", "--------------");
-
-	printf("%9s %5s%5s %5s%5s%5s\n", "", "  Y", "  N", "  Y", "  M", "  N");
+	printf("\n%9s  %10s  %16s\n", "Sym count",    "Boolean",        "Tristates");
+	printf(  "%9s  %13s  %16s\n", "---------", "------ ------", "----- ----- -----");
 	
-	printf("%9d %5d%5d %5d%5d%5d\n", 
+	printf("%9s  %6s %6s  %5s %5s %5s\n", "", "  Y", "  N", "  Y", "  M", "  N");
+	
+	printf("%9d  %6d %6d  %5d %5d %5d\n", 
 		count, bool_y, bool_n, tri_y, tri_m, tri_n);
+
+	if (tri_y+tri_m+tri_n > 0)
+		tristates = true;
 }
 
 
