@@ -1437,23 +1437,23 @@ void ConflictsView::calculateFixes(void)
 	end = clock();
 	time = ((double) (end - start)) / CLOCKS_PER_SEC;
 	printf("Conflict resolution time = %.6f secs.\n\n", time);
-	// result column 5 - resolution time
-	str_printf(&result_string, "%.6f;", time); 
+	// result column 7 - Resolution time
+	str_printf(&result_string, "%.6f,", time); 
 #endif
 	free(p);
 	g_array_free (wanted_symbols,FALSE);
 	if (solution_output == nullptr || solution_output->len == 0)
 	{
 #ifdef CONFIGFIX_TEST
-		// result column 6 - no. diagnoses
-		append_result("0;");	
+		// result column 8 - No. diagnoses (0 in this case)
+		append_result("0,");	
 #endif
 		return;
 	}
 	std::cout << "solution length = " << unsigned(solution_output->len) << std::endl;
 #ifdef CONFIGFIX_TEST
-	// result column 6 - no. diagnoses
-	str_printf(&result_string, "%i;;", solution_output->len);
+	// result columns 8 - No. diagnoses (non-zero), 9 - Comments
+	str_printf(&result_string, "%i,,", solution_output->len);
 #endif
 	solutionSelector->clear();
 	for (int i = 0; i < solution_output->len; i++)
@@ -1532,8 +1532,15 @@ void ConflictsView::testRandomConlict(void)
 	result_string = str_new();
 	// column 1 - Architecture
 	append_result(getenv("ARCH"));
-	// column 2 - configuration sample
+	// column 2 - Configuration sample
 	append_result((char*) conf_get_configname());
+	// column 3 - KCONFIG_PROBABILITY used to generate the sample
+	append_result(getenv("CONFIGFIX_TEST_PROBABILITY"));
+	// column 4 - Tristates
+	if (tristates)
+		append_result("YES");
+	else
+		append_result("NO");
 
 	// RANDOM_TESTING - generate and resolve random conflicts
 	if (testing_mode == RANDOM_TESTING) {
@@ -1705,10 +1712,10 @@ void ConflictsView::saveConflict(void)
 				conflictsTable->item(i,1)->text())));
 	}
 	
-	// result column 3 - Conflict filename
+	// result column 5 - Conflict filename
 	append_result(filename);
-	// result column 4 - Conflict size
-	str_printf(&result_string, "%i;", conflictsTable->rowCount()); 
+	// result column 6 - Conflict size
+	str_printf(&result_string, "%i,", conflictsTable->rowCount()); 
 
 	fclose(f);
 	printf("\n#\n# conflict saved to %s\n#\n\n", filename);
@@ -1774,13 +1781,13 @@ static bool verify_diagnosis(int i, const char *result_prefix,
 
 	/* 
 	 * Initialise result string with:
-	 * - prefix (columns 1-7 passed as argument)
-	 * - index  (column 8)
-	 * - size   (column 9)
+	 * - column 1-9 - common prefix passed as argument
+	 * - column 10  - Diagnosis index
+	 * - column 11  - Diagnosis size
 	 */
 	result_string = str_new();
 	str_append(&result_string, result_prefix);
-	str_printf(&result_string, "%i;%i;", i, size);
+	str_printf(&result_string, "%i,%i,", i, size);
 
 	// print diagnosis info
 	printf("\n-------------------------------\nDiagnosis %i\n", i);
@@ -1882,11 +1889,11 @@ static bool verify_diagnosis(int i, const char *result_prefix,
 
 	// skip remaining checks if fixes were not applied
 	if (!APPLIED) {
-		// column 10 - Valid
+		// column 12 - Resolved
 		append_result("NO");
-		// column 11 - Applied
+		// column 13 - Applied
 		append_result((char*) ("NO"));
-		// column 13 - Reset errors
+		// column 14 - Reset errors
 		append_result((char*) (ERR_RESET ? "YES" : "NO"));
 		output_result();
 
@@ -1916,13 +1923,13 @@ static bool verify_diagnosis(int i, const char *result_prefix,
 
 	// skip the rest if failed
 	if (!CONFIGS_MATCH) {
-		// column 10 - Valid
+		// column 12 - Resolved
 		append_result("NO");
-		// column 11 - Applied
+		// column 13 - Applied
 		append_result((char*) (APPLIED ? "YES" : "NO"));
-		// column 13 - Reset errors
+		// column 14 - Reset errors
 		append_result((char*) (ERR_RESET ? "YES" : "NO"));
-		// column 14 - Configs match
+		// column 15 - Configs match
 		append_result((char*) (CONFIGS_MATCH ? "YES" : "NO"));
 		output_result();
 
@@ -1938,15 +1945,15 @@ static bool verify_diagnosis(int i, const char *result_prefix,
 	/* Calculate final value, output result */
 
 	VALID = APPLIED && !ERR_RESET && CONFIGS_MATCH && DEPS_MET;
-	// column 10 - Valid
+	// column 12 - Resolved
 	append_result((char*) (VALID ? "YES" : "NO"));
-	// column 11 - Applied
+	// column 13 - Applied
 	append_result((char*) (APPLIED ? "YES" : "NO"));
-	// column 13 - Reset errors
+	// column 14 - Reset errors
 	append_result((char*) (ERR_RESET ? "YES" : "NO"));
-	// column 14 - Configs match
+	// column 15 - Configs match
 	append_result((char*) (CONFIGS_MATCH ? "YES" : "NO"));
-	// column 15 - Deps. met
+	// column 16 - Deps. met
 	append_result((char*) (DEPS_MET ? "YES" : "NO"));
 
 	output_result();
@@ -2591,9 +2598,9 @@ static void print_sample_stats() {
 
 	gstr sample_stats = str_new();
 	str_append(&sample_stats, getenv("ARCH"));
-	str_append(&sample_stats, getenv(";"));
+	str_append(&sample_stats, ",");
 	str_append(&sample_stats, (char*) conf_get_configname());
-	str_append(&sample_stats, getenv(";"));
+	str_append(&sample_stats, ",");
 
 	struct symbol* sym;
 	for_all_symbols(i, sym) {
@@ -2623,8 +2630,6 @@ static void print_sample_stats() {
 			default:
 				other++;
 		}
-		// str_append(&result_string, s);
-		// str_append(&result_string, ";");
 	}
 	printf("\n%9s %9s  %12s\n", "Sym count", "Boolean", "Tristate");
 	printf("%9s %10s  %12s\n", "---------", "---------", "--------------");
@@ -2864,7 +2869,7 @@ static void append_result(char *s)
 {
 	if (str_get(&result_string)) {
 		str_append(&result_string, s);
-		str_append(&result_string, ";");	
+		str_append(&result_string, ",");	
 	} else
 		printf("Warning: result string is empty");
 }
