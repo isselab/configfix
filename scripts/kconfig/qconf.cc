@@ -41,6 +41,7 @@
 #include <QTextStream>
 #include <dirent.h>
 #include <time.h>
+
 #include "configfix.h"
 #include "cf_utils.h"
 #include "cf_print.h"
@@ -69,15 +70,21 @@ static int testing_mode = RANDOM_TESTING;
 
 #define RESULTS_FILE "results.csv"
 
-// default conflict size, use -c N command line argument to change
+// default conflict size
 static int conflict_size = 1;
+// directory where generated conflict is saved
 static char* conflict_dir;
-// result string to be written to results.csv
-static gstr result_string = str_new();
+// tristates in configuration space
+static bool tristates = false;
+// number of symbols that conflict with current config
+static int no_conflict_candidates = 0;
+// result string to be written to RESULTS_FILE
+static gstr result_string = str_new(); // TODO remove call?
+// backup of the initially loaded configuration
+static GHashTable* initial_config;
+
 static void append_result(char *str);
 static void output_result();
-
-static GHashTable* initial_config;
 static bool sym_has_conflict(struct symbol *sym);
 static int sym_has_blocked_values(struct symbol *sym);
 static tristate random_blocked_value(struct symbol *sym);
@@ -93,7 +100,6 @@ static void print_setup(const char *name);
 static void print_config_stats(ConfigList *list);
 static void print_sample_stats();
 static GArray* rearrange_diagnosis(GArray *diag, int fix_idxs[]);
-// static void save_diagnosis(GArray *diag, char* filename);
 static void save_diagnosis(GArray *diag, char* file_prefix, bool valid_diag);
 static void save_diag_2(GArray *diag, char* file_prefix, bool valid_diag);
 static bool verify_diagnosis(int i, const char *result_prefix, GArray *diag, QTableWidget* conflictsTable);
@@ -1432,7 +1438,6 @@ void ConflictsView::calculateFixes(void)
 	time = ((double) (end - start)) / CLOCKS_PER_SEC;
 	printf("Conflict resolution time = %.6f secs.\n\n", time);
 	// result column 5 - resolution time
-	// printf("Result string: %s\n", str_get(&result_string));
 	str_printf(&result_string, "%.6f;", time); 
 #endif
 	free(p);
@@ -1497,9 +1502,6 @@ void ConflictsView::switchTestingMode()
  * -DCONFIGFIX_TEST during qconf.moc compilation.
  */
 #ifdef CONFIGFIX_TEST
-	// if (solution_output == nullptr || solution_output->len == 0) {
-		// return;
-	// }
 	/*
 	 * Switch to MANUAL_TESTING mode if solution 
 	 * for manually created conflict is found.
@@ -1513,7 +1515,7 @@ void ConflictsView::switchTestingMode()
 
 /*
  * In RANDOM_TESTING mode, generate random conflict
- * amd calculate fixes for it.
+ * and calculate fixes for it.
  * In both RANDOM_TESTING and MANUAL_TESTING mode
  * verify fixes, if they are present.
  */
@@ -1544,10 +1546,6 @@ void ConflictsView::testRandomConlict(void)
 		saveConflict();
 		calculateFixes();
 	}
-
-	//DEBUG
-	printf("\n--------------\nResult prefix\n--------------\n%s\n", str_get(&result_string));
-	//DEBUG
 
 	// output result and return if no solution found
 	if (solution_output == nullptr || solution_output->len == 0) {
@@ -1603,8 +1601,6 @@ void ConflictsView::generateConflict(void)
 
 	// random seed
 	srand(time(0));
-
-	// int conflict_count = 0;
 
 	while (conflictsTable->rowCount() < conflict_size) 
 	{
@@ -1670,7 +1666,6 @@ void ConflictsView::saveConflict(void)
 #ifdef CONFIGFIX_TEST
 	
 	// create directory
-	// char *conflict_dir = get_conflict_dir();
 	QDir().mkpath(conflict_dir);
 
 	// construct filename
@@ -1678,17 +1673,17 @@ void ConflictsView::saveConflict(void)
 		strlen(conflict_dir) 
 	    + strlen("conflict.txt")  + 1];
 	sprintf(filename, "%sconflict.txt", conflict_dir);
-	// free(conflict_dir);
 
+	// create file
     FILE* f = fopen(filename, "w");
     if(!f) {
-        printf("Error: could not save conflict\n");
+        printf("ERROR: could not create conflict file\n");
 		return;
     }
 
 	// compare conlict table with conflict_size
 	if (conflictsTable->rowCount() != conflict_size) 
-		printf("Warning: conlicts table row count and conflict_size parameter mismatch");
+		printf("WARNING: conlicts table row count and conflict_size parameter mismatch");
 
 	// iterate conflicts table, write symbols to file
 	for (int i = 0; i < conflictsTable->rowCount(); i++)
@@ -1697,10 +1692,10 @@ void ConflictsView::saveConflict(void)
 		struct symbol* sym = sym_find(_symbol);
 
 		if (!sym) {
-			printf("Error: conflict symbol %s not found\n", _symbol);
+			printf("ERROR: conflict symbol %s not found\n", _symbol);
 			return;
 		} else if (!sym->name) {
-			printf("Error: conflict symbol %s not found\n", _symbol);
+			printf("ERROR: conflict symbol %s not found\n", _symbol);
 			return;
 		}
 
@@ -1725,8 +1720,8 @@ void ConflictsView::saveConflict(void)
  * Verify all present diagnoses. 
  * 
  * For every diagnosis, construct and output a result string 
- * assuming that values common to the diagnoses are supplied 
- * in the result_prefix.
+ * assuming that values common to all diagnoses (columns 1-8) 
+ * are supplied in the 'result_prefix'.
  */
 void ConflictsView::verifyDiagnoses(const char *result_prefix) // const char*?
 {
@@ -1753,11 +1748,15 @@ void ConflictsView::verifyDiagnoses(const char *result_prefix) // const char*?
 			conflictsTable);
 
 		// reset configuration
+		printf("\nRestoring initial configuration... ");
 		emit(refreshMenu());
 		config_reset();
 		emit(refreshMenu());
 		if (config_compare(initial_config) != 0)
-			printf("\nERROR: could not reset configuration after verifying diagnosis\n");
+			printf("ERROR: could not reset configuration after verifying diagnosis\n");
+		else
+			printf("OK\n");
+		
 	}
 #endif
 }
@@ -1834,12 +1833,12 @@ static bool verify_diagnosis(int i, const char *result_prefix,
 		/* Therefore config must be saved before verifying target values */ 
 		if (apply_fix(permutation)) {
 			GHashTable *before_write = config_backup();
-			conf_write(".config.try");
+			conf_write(".config.applied");
 			// reload, compare
-			conf_read(".config.try");
+			conf_read(".config.applied");
 			if (config_compare(before_write) != 0)
 				// new values propagated
-				printf(".config.try: config & backup mismatch\n");
+				printf(".config.applied: config & backup mismatch\n");
 			g_hash_table_destroy(before_write);
 
 			// this function check both conflict and fix symbols
@@ -1859,8 +1858,10 @@ static bool verify_diagnosis(int i, const char *result_prefix,
 				ERR_RESET = true;
 				break;
 			}
-			// dot = failed test
-			printf(".");
+
+			// DEBUG
+			printf("TEST FAILED\n");
+			// DEBUG
 
 			g_array_free(permutation, false);
 		} 
@@ -2008,7 +2009,8 @@ static bool verify_fix_target_values(GArray *diag)
 
 /*
  * Check that conflict in the given table is resolved,
- * i.e. all its symbols have their target values.
+ * i.e. all its symbols have their target values
+ * in the current configuration.
  */
 static bool verify_resolution(QTableWidget* conflictsTable)
 {
@@ -2567,14 +2569,16 @@ static void print_config_stats(ConfigList *list)
 		count, promptless, invisible, unknown, nonchangeable, promptless_unchangeable);
 	
 	printf("Conflict candidates: %i config items (%i symbols)\n", 
-		// conflictsView->candidate_symbols, candidates);
 		conf_item_candidates, sym_candidates);
+	
+	// set static variable
+	no_conflict_candidates = sym_candidates;
+
 	//DEBUG
 	printf("Depend on 'mod': %i\n", dep_mod);
 	printf("Blocked values: 1 - %i, 2 - %i, 3 - %i, total - %i\n", 
 		blocked_1, blocked_2, blocked_3, 
 		(blocked_1 + blocked_2 + blocked_3));
-
 	//DEBUG
 }
 
