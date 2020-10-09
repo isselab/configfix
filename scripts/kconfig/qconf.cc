@@ -91,7 +91,7 @@ static bool diag_dependencies_met(GArray *diag);
 static bool symbol_has_changed(struct symbol *sym, GHashTable *backup);
 static void print_setup(const char *name);
 static void print_config_stats(ConfigList *list);
-static void save_sample_stats();
+static void print_sample_stats();
 static GArray* rearrange_diagnosis(GArray *diag, int fix_idxs[]);
 // static void save_diagnosis(GArray *diag, char* filename);
 static void save_diagnosis(GArray *diag, char* file_prefix, bool valid_diag);
@@ -2571,7 +2571,7 @@ static void print_config_stats(ConfigList *list)
 }
 
 
-static void save_sample_stats() {
+static void print_sample_stats() {
 
 	int i, count=0, invalid=0, other=0,
 	// value counts
@@ -4021,7 +4021,7 @@ int main(int ac, char** av)
 	conflictsView->conflictsTable->resizeColumnsToContents();
 
 	print_config_stats(configView->list);
-	save_sample_stats();
+	print_sample_stats();
 	initial_config = config_backup();
 #endif
 	v->show();
