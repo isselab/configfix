@@ -301,7 +301,7 @@ static bool syms_have_target_value(GArray *arr)
 				return false;
 		}
 		else {
-			if (strcmp(str_get(&fix->nb_val),sym_get_string_value(fix->sym)) != 0)
+			if (strcmp(str_get(&fix->nb_val), sym_get_string_value(fix->sym)) != 0)
 				return false;
 		}
 	}

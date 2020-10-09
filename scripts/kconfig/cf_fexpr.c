@@ -176,8 +176,16 @@ static void create_fexpr_choice(struct symbol *sym)
 	
 	char *name = strdup(prompt->text);
 	
+	/* remove spaces */
+	char *write = name, *read = name;
+	do {
+		if (*read != ' ')
+			*write++ = *read;
+	} while (*read++);
+	
 	//printf("\nChoice: %s, prop_type %s\n", sym->name, prompt->text);
-	struct fexpr *fexpr_y = fexpr_create(sat_variable_nr++, FE_CHOICE, name);
+	struct fexpr *fexpr_y = fexpr_create(sat_variable_nr++, FE_CHOICE, "Choice_");
+	str_append(&fexpr_y->name, name);
 	fexpr_y->sym = sym;
 	fexpr_y->tri = yes;
 	/* add it to satmap */
