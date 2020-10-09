@@ -2398,23 +2398,31 @@ static void print_setup(const char* name)
 {
 	printf("\nConfigfix testing enabled:\n");
 	printf("---------------------------\n");
-	printf("%-22s %s\n", "$CC:", getenv("CC"));
-	printf("%-22s %s\n", "$CC_VERSION_TEXT:", getenv("CC_VERSION_TEXT"));
-	printf("%-22s %s\n", "$KERNELVERSION:", getenv("KERNELVERSION"));
-	printf("%-22s %s\n", "$ARCH:", getenv("ARCH"));
-	printf("%-22s %s\n", "$SRCARCH:", getenv("SRCARCH"));
-	printf("%-22s %s\n", "Working directory:", getenv("PWD"));
-	printf("%-22s %s\n", "$srctree:", getenv("srctree"));
-	printf("%-22s %s\n", "Kconfig file:", name);
+	printf("%-27s %s\n", "Working directory:", getenv("PWD"));
+	printf("%-27s %s\n", "$CC:", getenv("CC"));
+	printf("%-27s %s\n", "$CC_VERSION_TEXT:", getenv("CC_VERSION_TEXT"));
+	printf("%-27s %s\n", "$KERNELVERSION:", getenv("KERNELVERSION"));
+	printf("%-27s %s\n", "$ARCH:", getenv("ARCH"));
+	printf("%-27s %s\n", "$SRCARCH:", getenv("SRCARCH"));
+	printf("%-27s %s\n", "$srctree:", getenv("srctree"));
+	printf("%-27s %s\n", "Kconfig file:", name);
 	if (rootmenu.prompt)
-			printf("%-22s %s\n", "Root menu prompt:", rootmenu.prompt->text);
-	printf("%-22s %s %s\n", "Configuration sample:", 
-		// initial configuration file
-		conf_get_configname(), 
-		// either set in KCONFIG_CONFIG or default '.config'
-		""); //getenv("KCONFIG_CONFIG") ? "(via KCONFIG_CONFIG)" : "(default)");
-	//printf("%-22s %s (len=%d)\n", "Config dir:", get_config_dir(), strlen(get_config_dir()));
-	printf("%-22s %d\n", "Conflict size:", conflict_size);
+		printf("%-27s %s\n\n", "Root menu prompt:", rootmenu.prompt->text);
+	
+	printf("%-27s %s\n", 
+		"CONFIGFIX_PATH:", getenv("CONFIGFIX_PATH"));	
+	printf("%-27s %s\n", 
+		"CONFIGFIX_TEST_PATH:", getenv("CONFIGFIX_TEST_PATH"));
+	printf("%-27s %s\n", "Results file:", get_results_file());
+	printf("%-27s %s\n", 
+		"CONFIGFIX_TEST_CONFIG_DIR:", getenv("CONFIGFIX_TEST_CONFIG_DIR"));
+	printf("%-27s %s\n", "Configuration sample:", conf_get_configname());
+	printf("%-27s %s\n", 
+		"CONFIGFIX_TEST_PROBABILITY:", getenv("CONFIGFIX_TEST_PROBABILITY"));
+		// conflict_dir = get_conflict_dir();
+	printf("%-27s %s\n", 
+		"Conflict directory:", conflict_dir);
+	printf("%-27s %d\n", "Conflict size:", conflict_size);
 }
 
 /*
@@ -3993,9 +4001,6 @@ int main(int ac, char** av)
 	// 		conflict_size = atoi(av[3]);
 	// }
 
-	print_setup(name);
-	conflict_dir = get_conflict_dir();
-	printf("\nConflict directory: %s\n", conflict_dir);
 #endif
 
 	configSettings = new ConfigSettings();
@@ -4020,6 +4025,8 @@ int main(int ac, char** av)
 	ConflictsView *conflictsView = v->getConflictsView();
 	conflictsView->conflictsTable->resizeColumnsToContents();
 
+	conflict_dir = get_conflict_dir();
+	print_setup(name);
 	print_config_stats(configView->list);
 	print_sample_stats();
 	initial_config = config_backup();
