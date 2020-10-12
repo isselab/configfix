@@ -1676,15 +1676,19 @@ void ConflictsView::saveConflict(void)
 	QDir().mkpath(conflict_dir);
 
 	// construct filename
-	char filename[
-		strlen(conflict_dir) 
-	    + strlen("conflict.txt")  + 1];
-	sprintf(filename, "%sconflict.txt", conflict_dir);
+	// char filename[
+	// 	strlen(conflict_dir) 
+	//     + strlen("conflict.txt")  + 1];
+	// sprintf(filename, "%sconflict.txt", conflict_dir);
+	gstr filename = str_new();
+	str_append(&filename, conflict_dir);
+	str_append(&filename, "conflict.txt");
 
 	// create file
-    FILE* f = fopen(filename, "w");
+    FILE* f = fopen(str_get(&filename), "w");
     if(!f) {
         printf("ERROR: could not create conflict file\n");
+		str_free(&filename);
 		return;
     }
 
@@ -1706,19 +1710,21 @@ void ConflictsView::saveConflict(void)
 			return;
 		}
 
-		fprintf(f, "%s => %s\n", 
-			sym->name, 
+		fprintf(f, "%s: %s => %s\n", 
+ 			sym->name, 
+			sym_get_string_value(sym),
 			tristate_get_char(string_value_to_tristate(
 				conflictsTable->item(i,1)->text())));
 	}
 	
 	// result column 5 - Conflict filename
-	append_result(filename);
+	append_result((char*) str_get(&filename));
 	// result column 6 - Conflict size
 	str_printf(&result_string, "%i,", conflictsTable->rowCount()); 
 
 	fclose(f);
-	printf("\n#\n# conflict saved to %s\n#\n\n", filename);
+	printf("\n#\n# conflict saved to %s\n#\n\n", str_get(&filename));
+	str_free(&filename);
 
 #endif
 }
