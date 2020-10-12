@@ -2795,14 +2795,16 @@ static void save_diag_2(GArray *diag, char* file_prefix, bool valid_diag)
  */
 static char* get_config_dir(void)
 {
-	char *config_dir = (char*) conf_get_configname();
-	// if config filename is a path
-	if (strrchr(config_dir, '/')) {
-		// drop its contents past the last slash
-		strrchr(config_dir, '/')[1] = 0;
-		return config_dir;
-	} else
-		return "./";
+	// char *config_dir = (char*) conf_get_configname();
+	// // if config filename is a path
+	// if (strrchr(config_dir, '/')) {
+	// 	// drop its contents past the last slash
+	// 	strrchr(config_dir, '/')[1] = 0;
+	// 	return config_dir;
+	if (getenv("CONFIGFIX_TEST_CONFIG_DIR"))
+		return getenv("CONFIGFIX_TEST_CONFIG_DIR");
+	else
+		return ".";
 }
 
 /*
@@ -2860,8 +2862,8 @@ static char* get_conflict_dir()
 	
 	// e.g. /path/to/config/sample/conflict.05/
 	char *conflict_dir = (char*) malloc(
-		sizeof(char) * (strlen(get_config_dir()) + strlen("conflict.XX/") + 1));
-	sprintf(conflict_dir, "%sconflict.%.2d/", get_config_dir(), next_conflict_num);
+		sizeof(char) * (strlen(get_config_dir()) + strlen("/conflict.XXX/") + 1));
+	sprintf(conflict_dir, "%s/conflict.%.3d/", get_config_dir(), next_conflict_num);
 	return conflict_dir; 
 }
 
