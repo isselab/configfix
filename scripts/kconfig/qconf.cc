@@ -1710,11 +1710,32 @@ void ConflictsView::saveConflict(void)
 			return;
 		}
 
+		// output current and target values
 		fprintf(f, "%s: %s => %s\n", 
  			sym->name, 
 			sym_get_string_value(sym),
 			tristate_get_char(string_value_to_tristate(
 				conflictsTable->item(i,1)->text())));
+
+		// output direct dependencies
+		gstr dir_deps = str_new();
+		str_append(&dir_deps, "    Direct dependencies:  ");
+		expr_gstr_print(sym->dir_dep.expr, &dir_deps);
+		str_append(&dir_deps, "\n");
+		fprintf(f, str_get(&dir_deps));
+		str_free(&dir_deps);
+
+		// output reverese dependencies
+		if (sym->rev_dep.expr) {
+			gstr rev_deps = str_new();
+			str_append(&rev_deps, "    Reverse dependencies: ");
+		    expr_gstr_print(sym->rev_dep.expr, &rev_deps);
+			str_append(&rev_deps, "\n");
+			fprintf(f, str_get(&rev_deps));
+			str_free(&rev_deps);
+		}
+
+		fprintf(f, "\n");
 	}
 	
 	// result column 5 - Conflict filename
