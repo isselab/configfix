@@ -63,14 +63,17 @@ static inline QString qgettext(const char* str)
 	int fix_idx; for (fix_idx = 0; fix_idx < diag->len; fix_idx++) for (fix = g_array_index(diag, struct symbol_fix *, fix_idx);fix;fix=NULL)
 #define for_every_fix(diag, i, fix) \
 	for (i = 0; i < diag->len; i++) for (fix = g_array_index(diag, struct symbol_fix *, i);fix;fix=NULL)
+
 // testing modes
 #define RANDOM_TESTING 1
 #define MANUAL_TESTING 2
 static int testing_mode = RANDOM_TESTING;
-// number of random conflict to be generated
-#define NO_CONFLICTS 2
+
+/* Total number of random conflicts is MAX_CONFLICT_SIZE * NO_CONFLICTS */
 // maximum no. symbols in a random conflict
 #define MAX_CONFLICT_SIZE 3
+// number of random conflicts of each size
+#define NO_CONFLICTS 5
 
 #define RESULTS_FILE "results.csv"
 
@@ -1612,33 +1615,33 @@ void ConflictsView::testRandomConlict(void)
 
 
 	// output result and return if no solution found
-	if (solution_output == nullptr || solution_output->len == 0) {
-		output_result();
-		return;
-	} 
+	// if (solution_output == nullptr || solution_output->len == 0) {
+	// 	output_result();
+	// 	return;
+	// } 
 	// otherwise verify diagnoses - both RANDOM_TESTING and MANUAL_TESTING
-	else {
-		// common result prefix for all diagnoses
-		gstr result_prefix = str_new();
-		str_append(&result_prefix, str_get(&result_string));
-		str_free(&result_string);
+	// else {
+	// 	// common result prefix for all diagnoses
+	// 	gstr result_prefix = str_new();
+	// 	str_append(&result_prefix, str_get(&result_string));
+	// 	str_free(&result_string);
 
-		// both RANDOM_TESTING and MANUAL_TESTING - verify diagnoses
-		verifyDiagnoses(str_get(&result_prefix));
+	// 	// both RANDOM_TESTING and MANUAL_TESTING - verify diagnoses
+	// 	verifyDiagnoses(str_get(&result_prefix));
 
-		// reset configuration
-		printf("Restoring initial configuration... ");
-		emit(refreshMenu());
-		config_reset();
-		emit(refreshMenu());
-		if (config_compare(initial_config) != 0)
-			printf("ERROR: configuration and backup mismatch\n");
-		else 
-			printf("OK\n");
+	// 	// reset configuration
+	// 	printf("Restoring initial configuration... ");
+	// 	emit(refreshMenu());
+	// 	config_reset();
+	// 	emit(refreshMenu());
+	// 	if (config_compare(initial_config) != 0)
+	// 		printf("ERROR: configuration and backup mismatch\n");
+	// 	else 
+	// 		printf("OK\n");
 
-		// FIXME move to verifyDiagnoses?
-		// output_result();
-	}
+	// 	// FIXME move to verifyDiagnoses?
+	// 	// output_result();
+	// }
 
 	/* 
 	 * If the conflict was created manually and resolved
@@ -1662,6 +1665,7 @@ void ConflictsView::generateConflict(void)
  */
 #ifdef CONFIGFIX_TEST
 	conflictsTable->clearContents();
+	conflictsTable->setRowCount(0);
 
 	// random seed
 	srand(time(0));
