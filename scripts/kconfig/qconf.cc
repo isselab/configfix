@@ -1613,6 +1613,8 @@ void ConflictsView::testRandomConlict(void)
 			}
 
 		}
+	
+		printf("Test run has finished\n");
 	}
 
 
