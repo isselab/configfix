@@ -113,9 +113,25 @@ static void write_constraints_to_file(void)
 	fclose(fd);
 }
 
+static void add_comments(gpointer key, gpointer value, gpointer fd)
+{
+	struct fexpr *e = (struct fexpr *) value;
+	
+	if (
+		e->type == FE_TMPSATVAR || 
+		e->type == FE_SELECT ||
+		e->type == FE_CHOICE ||
+		e->type == FE_FALSE ||
+		e->type == FE_TRUE
+	) return;
+	
+	fprintf((FILE *) fd, "c %d %s\n", *((int *) key), str_get(&e->name));
+}
+
 static void write_dimacs_to_file(PicoSAT *pico)
 {
 	FILE *fd = fopen(OUTFILE_DIMACS, "w");
+	g_hash_table_foreach(satmap, add_comments, fd);
 	picosat_print(pico, fd);
 	fclose(fd);
 }

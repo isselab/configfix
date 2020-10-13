@@ -50,16 +50,11 @@ static long long sym_get_range_val(struct symbol *sym, int base);
 
 static void debug_info(void)
 {
-// 	unsigned int i;
-// 	int no = 0, dep = 0;
-// 	struct symbol *sym;
-// 	for_all_symbols(i, sym) {
-// 		if (sym->name && strcmp(sym->name, "MAX_STACK_SIZE_MB") == 0) {
-// 			printf("PRINTING NR_QUICK\n");
-// 			print_symbol(sym);
-// 			print_sym_constraint(sym);
-// 		}
-// 	}
+	unsigned int i;
+	struct symbol *sym;
+	for_all_symbols(i, sym) {
+
+	}
 }
 
 /*
@@ -88,17 +83,15 @@ void get_constraints(void)
 		
 		/* build constraints for select statements
 		 * need to treat choice symbols seperately */
-		// TODO check choice values for rev. dependencies
 		if (!KCR_CMP) {
 			add_selects(sym);
 		} else {
-			if (sym->rev_dep.expr)
+			if (sym->rev_dep.expr && !sym_is_choice(sym) && !sym_is_choice_value(sym))
 				add_selects_kcr(sym);
 		}
 		
 		/* build constraints for dependencies for booleans */
 		if (sym->dir_dep.expr && !sym_is_choice(sym) && !sym_is_choice_value(sym)) {
-// 		if (sym->dir_dep.expr &&  !sym_is_choice(sym)) {
 			if (!KCR_CMP)
 				add_dependencies_bool(sym);
 			else
@@ -109,12 +102,11 @@ void get_constraints(void)
 		if (sym_is_choice(sym))
 			add_choice_prompt_cond(sym);
 		
-		/* build constraints for dependencies (choice symbols) */
-		if (sym_is_choice(sym))
+		/* build constraints for dependencies (choice symbols and options) */
+		if (sym_is_choice(sym) || sym_is_choice_value(sym))
 			add_choice_dependencies(sym);
 		
-		/* build constraints for the choice options */
-		// TODO
+		/* build constraints for the choice groups */
 		if (sym_is_choice(sym))
 			add_choice_constraints(sym);
 		
@@ -131,23 +123,22 @@ void get_constraints(void)
 		
 	}
 	
-	/* build the constraints for select-variables */
+	/* 
+	 * build the constraints for select-variables
+	 * skip non-Booleans, choice symbols/options och symbols without rev_dir
+	 */
 	for_all_symbols(i, sym) {
 		
 		if (KCR_CMP) continue;
 		
 		if (!sym_is_boolean(sym)) continue;
 		
-		// TODO
-		if (sym_is_choice(sym)) continue;
+		if (sym_is_choice(sym) || sym_is_choice_value(sym)) continue;
 		
 		if (!sym->rev_dep.expr) continue;
 		
 // 		assert(sym->rev_dep.expr != NULL);
 		if (sym->list_sel_y == NULL) {
-// 			printf("Is null for %s\n", sym_get_name(sym));
-// 			print_sym_constraint(sym);
-			//print_expr("Rev.dir:", sym->rev_dep.expr, 0);
 			continue;
 		}
         
@@ -288,7 +279,6 @@ static void add_selects(struct symbol *sym)
         
 		convert_fexpr_to_nnf(e1);
 		sym_add_constraint(selected, e1);
-// 		print_fexpr("e1:", e1, -1);
 		
 		/* imply that symbol is selected to y */
 		if (selected->list_sel_y == NULL)
@@ -306,7 +296,6 @@ static void add_selects(struct symbol *sym)
         
 		convert_fexpr_to_nnf(e2);
 		sym_add_constraint(selected, e2);
-// 		print_fexpr("e2:", e2, -1);
 		
 		/* imply that symbol is selected */
 		if (selected->type == S_TRISTATE) {
@@ -328,61 +317,30 @@ static void add_dependencies_bool(struct symbol *sym)
 {
 	assert(sym_is_boolean(sym));
 	assert(sym->dir_dep.expr);
-
-// 	print_sym_name(sym);
-// 	print_expr("dir_dep expr:", sym->dir_dep.expr, E_NONE);
 	
 	struct k_expr *ke_dirdep = parse_expr(sym->dir_dep.expr, NULL);
-// 	struct k_expr *ke_revdep = sym->rev_dep.expr ? parse_expr(sym->rev_dep.expr, NULL) : get_const_false_as_kexpr();
-	
-// 	print_kexpr("kexpr:", ke_dirdep);
 	
 	struct fexpr *dep_both = calculate_fexpr_both(ke_dirdep);
-// 	struct fexpr *sel_y = sym->rev_dep.expr ? sym->fexpr_sel_y : const_false;
-// 	struct fexpr *sel_m = sym->rev_dep.expr ? sym->fexpr_sel_m : const_false;
-
-// 	print_fexpr("fexpr dep_both:", dep_both, -1);
-// 	print_fexpr("fexpr sel_y:", sel_y, -1);
 	
 	if (sym->type == S_TRISTATE) {
 		struct fexpr *dep_y = calculate_fexpr_y(ke_dirdep);
-// 		struct fexpr *sel_y = calculate_fexpr_y(ke_revdep);
 		struct fexpr *sel_y = sym->rev_dep.expr ? sym->fexpr_sel_y : const_false;
 		
 		struct fexpr *fe_y = implies(sym->fexpr_y, fexpr_or(dep_y, sel_y));
-// 		struct fexpr *fe_y = implies(sym->fexpr_y, dep_y);
 		
 		convert_fexpr_to_nnf(fe_y);
 		sym_add_constraint(sym, fe_y);
 		
 		struct fexpr *fe_both = implies(sym->fexpr_m, fexpr_or(dep_both, sym_get_fexpr_sel_both(sym)));
-// 		struct fexpr *fe_both = implies(sym->fexpr_m, dep_both);
 		
 		convert_fexpr_to_nnf(fe_both);
 		sym_add_constraint(sym, fe_both);
 	} else if (sym->type == S_BOOLEAN) {
 		
-// 		struct fexpr *fe_both = implies(sym->fexpr_y, fexpr_or(dep_both, sel_both));
-// 		sym_add_constraint(sym, fe_both);
-		
-		
-		if (!sym_is_choice_value(sym)) {
-			struct fexpr *fe_both = implies(sym->fexpr_y, fexpr_or(dep_both, sym_get_fexpr_sel_both(sym)));
-// 			struct fexpr *fe_both = implies(sym->fexpr_y, dep_both);
-			
-			convert_fexpr_to_nnf(fe_both);
-			sym_add_constraint(sym, fe_both);
-		} else {
-			// TODO
-			assert(ke_dirdep->type == KE_SYMBOL);
-			struct symbol *ch = ke_dirdep->sym;
-			struct fexpr *fe = implies(sym->fexpr_y, fexpr_and(ch->fexpr_y, fexpr_not(ch->fexpr_m)));
-			
-			convert_fexpr_to_nnf(fe);
-			sym_add_constraint(sym, fe);
-		}
+		struct fexpr *fe_both = implies(sym->fexpr_y, fexpr_or(dep_both, sym_get_fexpr_sel_both(sym)));
+		convert_fexpr_to_nnf(fe_both);
+		sym_add_constraint(sym, fe_both);
 	}
-	//printf("\n");
 }
 
 /*
@@ -393,20 +351,12 @@ static void add_dependencies_bool_kcr(struct symbol *sym)
 {
 	assert(sym_is_boolean(sym));
 	assert(sym->dir_dep.expr);
-
-// 	print_sym_name(sym);
-// 	print_expr("dir_dep expr:", sym->dir_dep.expr, E_NONE);
 	
 	struct k_expr *ke_dirdep = parse_expr(sym->dir_dep.expr, NULL);
 	struct k_expr *ke_revdep = sym->rev_dep.expr ? parse_expr(sym->rev_dep.expr, NULL) : get_const_false_as_kexpr();
 	
-// 	print_kexpr("kexpr:", ke_dirdep);
-	
 	struct fexpr *dep_both = calculate_fexpr_both(ke_dirdep);
 	struct fexpr *sel_both = sym->rev_dep.expr ? calculate_fexpr_both(ke_revdep) : const_false;
-
-// 	print_fexpr("fexpr dep_both:", dep_both, -1);
-// 	print_fexpr("fexpr sel_both:", sel_both, -1);
 	
 	if (sym->type == S_TRISTATE) {
 		struct fexpr *dep_y = calculate_fexpr_y(ke_dirdep);
@@ -418,24 +368,9 @@ static void add_dependencies_bool_kcr(struct symbol *sym)
 		struct fexpr *fe_both = implies(sym->fexpr_m, fexpr_or(dep_both, sel_both));
 		sym_add_constraint(sym, fe_both);
 	} else if (sym->type == S_BOOLEAN) {
-		
-// 		struct fexpr *fe_both = implies(sym->fexpr_y, fexpr_or(dep_both, sel_both));
-// 		sym_add_constraint(sym, fe_both);
-		
-		
-		if (!sym_is_choice_value(sym)) {
-			struct fexpr *fe_both = implies(sym->fexpr_y, fexpr_or(dep_both, sel_both));
-			sym_add_constraint(sym, fe_both);
-		} else {
-			// TODO
-			assert(ke_dirdep->type == KE_SYMBOL);
-			struct symbol *ch = ke_dirdep->sym;
-			struct fexpr *fe = implies(sym->fexpr_y, fexpr_and(ch->fexpr_y, fexpr_not(ch->fexpr_m)));
-
-			sym_add_constraint(sym, fe);
-		}
+		struct fexpr *fe_both = implies(sym->fexpr_y, fexpr_or(dep_both, sel_both));
+		sym_add_constraint(sym, fe_both);
 	}
-	//printf("\n");
 }
 
 /*
@@ -447,19 +382,11 @@ static void add_dependencies_nonbool(struct symbol *sym)
 	assert(sym_is_nonboolean(sym));
 	assert(sym->dir_dep.expr);
 	
-// 	print_sym_name(sym);
-// 	print_expr("dir_dep expr:", sym->dir_dep.expr, E_NONE);
-	
 	struct k_expr *ke_dirdep = parse_expr(sym->dir_dep.expr, NULL);
 	struct k_expr *ke_revdep = sym->rev_dep.expr ? parse_expr(sym->rev_dep.expr, NULL) : get_const_false_as_kexpr();
 	
-// 	print_kexpr("kexpr:", ke_dirdep);
-	
 	struct fexpr *dep_both = calculate_fexpr_both(ke_dirdep);
 	struct fexpr *sel_both = sym->rev_dep.expr ? calculate_fexpr_both(ke_revdep) : const_false;
-	
-// 	if (dep_both == const_false)
-// 		return;
 	
 	// TODO check
 	if (sel_both != const_false)
@@ -492,70 +419,62 @@ static void add_choice_prompt_cond(struct symbol* sym)
 	struct k_expr *ke = prompt->visible.expr ? parse_expr(prompt->visible.expr, NULL) : get_const_true_as_kexpr();
 	struct fexpr *promptCondition = calculate_fexpr_both(ke);
 	
-// 	print_expr("CHOICE_1 PROMPT:", prompt->visible.expr, E_NONE);
-// 	print_fexpr("C_1 fexpr:", promptCondition, -1);
-	
 	struct fexpr *fe_both = sym_get_fexpr_both(sym);
 	
 	if (!sym_is_optional(sym)) {
 		struct fexpr *req_cond = implies(promptCondition, fe_both);
-// 		print_fexpr("PromptCond:", req_cond, -1);
-		
-// 		convert_fexpr_to_nnf(req_cond);
+		convert_fexpr_to_nnf(req_cond);
 		sym_add_constraint(sym, req_cond);
 	}
 	
 	struct fexpr *pr_cond = implies(fe_both, promptCondition);
 	
-// 	convert_fexpr_to_nnf(pr_cond);
+	convert_fexpr_to_nnf(pr_cond);
 	sym_add_constraint(sym, pr_cond);
 }
 
 /*
- * build constraints for dependencies (choice symbols)
+ * build constraints for dependencies (choice symbols and options)
  */
 static void add_choice_dependencies(struct symbol *sym)
 {
-	assert(sym_is_choice(sym));
+	assert(sym_is_choice(sym) || sym_is_choice_value(sym));
 	
 	struct property *prompt = sym_get_prompt(sym);
 	assert(prompt);
 	
-	struct k_expr *ke_dirdep = prompt->visible.expr ? parse_expr(prompt->visible.expr, NULL) : get_const_true_as_kexpr();
+	struct k_expr *ke_dirdep;
+	if (sym_is_choice(sym)) {
+		if (!sym->rev_dep.expr)
+			return;
+		ke_dirdep = parse_expr(sym->rev_dep.expr, NULL);
+	} else {
+		if (!sym->dir_dep.expr)
+			return;
+		ke_dirdep = parse_expr(sym->dir_dep.expr, NULL);
+	}
 
-// 	print_expr("dir_dep expr:", sym->dir_dep.expr, E_NONE);
-	
-	//struct k_expr *ke_dirdep = parse_expr(sym->dir_dep.expr, NULL);
-	//struct k_expr *ke_revdep = sym->rev_dep.expr ? parse_expr(sym->rev_dep.expr, NULL) : get_const_false_as_kexpr();
-	
 	struct fexpr *dep_both = calculate_fexpr_both(ke_dirdep);
-	//struct fexpr *sel_both = sym->rev_dep.expr ? calculate_fexpr_both(ke_revdep) : const_false;
-
-// 	print_fexpr("fexpr dep_both:", dep_both, -1);
-// 	print_fexpr("fexpr sel_both:", sel_both, -1);
 	
 	if (sym->type == S_TRISTATE) {
 		struct fexpr *dep_y = calculate_fexpr_y(ke_dirdep);
-		//struct fexpr *sel_y = calculate_fexpr_y(ke_revdep);
-		//struct fexpr *fe_y = implies(sym->fexpr_y, fexpr_or(dep_y, sel_y));
 		struct fexpr *fe_y = implies(sym->fexpr_y, dep_y);
-		
-// 		convert_fexpr_to_nnf(fe_y);
+		convert_fexpr_to_nnf(fe_y);
 		sym_add_constraint(sym, fe_y);
 		
 		struct fexpr *fe_both = implies(sym->fexpr_m, dep_both);
-		
-// 		convert_fexpr_to_nnf(fe_both);
+		convert_fexpr_to_nnf(fe_both);
 		sym_add_constraint(sym, fe_both);
 	} else if (sym->type == S_BOOLEAN) {
 		struct fexpr *fe_both = implies(sym->fexpr_y, dep_both);
+		convert_fexpr_to_nnf(fe_both);
 		sym_add_constraint(sym, fe_both);
 	}
 }
 
 
 /*
- * build constraints for the choice symbols
+ * build constraints for the choice groups
  */
 static void add_choice_constraints(struct symbol *sym)
 {
@@ -678,6 +597,61 @@ static void add_invisible_constraints(struct symbol *sym, struct property *promp
 		sym_add_constraint(sym, e1);
 	}
 
+	/* if invisible and off by default, then a symbol can only be deactivated by its reverse dependencies */
+	if (sym->type == S_TRISTATE) {
+		struct fexpr *sel_y, *sel_m, *sel_both;
+		if (sym->fexpr_sel_y != NULL) {
+			sel_y = implies(sym->fexpr_y, sym->fexpr_sel_y);
+			sel_m = implies(sym->fexpr_m, fexpr_or(sym->fexpr_sel_y, sym->fexpr_sel_m));
+			sel_both = implies(sym->fexpr_y, fexpr_or(sym->fexpr_sel_y, sym->fexpr_sel_m));
+		} else {
+			sel_y = fexpr_not(sym->fexpr_y);
+			sel_m = fexpr_not(sym->fexpr_m);
+			sel_both = fexpr_not(sym->fexpr_y);
+		}
+		
+		struct fexpr *c1 = implies(fexpr_not(default_y), sel_y);
+		struct fexpr *c2 = implies(modules_sym->fexpr_y, c1);
+		struct fexpr *c3 = implies(nopromptCond, c2);
+		convert_fexpr_to_nnf(c3);
+		sym_add_constraint(sym, c3);
+
+		struct fexpr *d1 = implies(fexpr_not(default_m), sel_m);
+		struct fexpr *d2 = implies(modules_sym->fexpr_y, d1);
+		struct fexpr *d3 = implies(nopromptCond, d2);
+		convert_fexpr_to_nnf(d3);
+		sym_add_constraint(sym, d3);
+
+		struct fexpr *e1 = implies(fexpr_not(default_both), sel_both);
+		struct fexpr *e2 = implies(fexpr_not(modules_sym->fexpr_y), e1);
+		struct fexpr *e3 = implies(nopromptCond, e2);
+		convert_fexpr_to_nnf(e3);
+		sym_add_constraint(sym, e3);
+	} else if (sym->type == S_BOOLEAN) {
+		/* somewhat dirty hack since the symbol is defined twice.
+		 * that creates problems with the prompt.
+		 * needs to be revisited.
+		 * TODO: fix it.
+		 */
+		if (sym->name && strcmp(sym->name, "X86_EXTENDED_PLATFORM") == 0) goto SKIP_PREV_CONSTRAINT;
+		
+		struct fexpr *sel_y;
+		if (sym->fexpr_sel_y != NULL)
+			sel_y = implies(sym->fexpr_y, sym->fexpr_sel_y); //sym->fexpr_sel_y;
+		else
+			sel_y = fexpr_not(sym->fexpr_y);
+		
+		struct fexpr *e1 = implies(fexpr_not(default_both), sel_y);
+		struct fexpr *e2 = implies(nopromptCond, e1);
+		
+		convert_fexpr_to_nnf(e2);
+		sym_add_constraint(sym, e2);
+	} else {
+		// TODO for non-booleans
+	}
+	
+SKIP_PREV_CONSTRAINT:
+
 	/* if invisible and on by default, then a symbol can only be deactivated by its dependencies */
 	if (sym->type == S_TRISTATE) {
 		if (defaults->len == 0) return;
@@ -700,7 +674,7 @@ static void add_invisible_constraints(struct symbol *sym, struct property *promp
 		convert_fexpr_to_nnf(c2);
 		sym_add_constraint(sym, c2);
 	} else {
-		
+		// TODO for non-booleans
 	}
 
 }
@@ -745,9 +719,6 @@ static void sym_add_range_constraints(struct symbol *sym)
 			prevs = fexpr_and(propCond, prevs);
 		}
 		g_array_append_val(prevCond, propCond);
-		
-// 		print_fexpr("propCond:", propCond, -1);
-// 		print_fexpr("prevs:", prevs, -1);
 
 		int base;
 		long long range_min, range_max, tmp;
@@ -798,7 +769,7 @@ static void sym_nonbool_at_least_1(struct symbol *sym)
 	assert(sym_is_nonboolean(sym));
 	
 	struct fexpr *e = NULL;
-	int i;
+	unsigned int i;
 	for (i = 0; i < sym->fexpr_nonbool->arr->len; i++) {
 		if (i == 0)
 			e = g_array_index(sym->fexpr_nonbool->arr, struct fexpr *, i);
@@ -817,7 +788,7 @@ static void sym_nonbool_at_most_1(struct symbol *sym)
 	assert(sym_is_nonboolean(sym));
 	
 	struct fexpr *e1, *e2;
-	int i, j;
+	unsigned int i, j;
 	for (i = 0; i < sym->fexpr_nonbool->arr->len; i++) {
 		e1 = g_array_index(sym->fexpr_nonbool->arr, struct fexpr *, i);
 		for (j = i + 1; j < sym->fexpr_nonbool->arr->len; j++) {

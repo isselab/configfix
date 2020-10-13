@@ -394,13 +394,6 @@ void print_sym_constraint(struct symbol* sym)
 	for (i = 0; i < sym->constraints->arr->len; i++) {
 		e = g_array_index(sym->constraints->arr, struct fexpr *, i);
 		fexpr_print("::", e, -1);
-		
-		#if PRINT_ALL_CNF
-			printf("\nCNF: ");
-			convert_fexpr_to_cnf(e);
-			print_fexpr(e, -1);
-		#endif
-		printf("\n");
 	}
 }
 

@@ -176,8 +176,16 @@ static void create_fexpr_choice(struct symbol *sym)
 	
 	char *name = strdup(prompt->text);
 	
+	/* remove spaces */
+	char *write = name, *read = name;
+	do {
+		if (*read != ' ')
+			*write++ = *read;
+	} while (*read++);
+	
 	//printf("\nChoice: %s, prop_type %s\n", sym->name, prompt->text);
-	struct fexpr *fexpr_y = fexpr_create(sat_variable_nr++, FE_CHOICE, name);
+	struct fexpr *fexpr_y = fexpr_create(sat_variable_nr++, FE_CHOICE, "Choice_");
+	str_append(&fexpr_y->name, name);
 	fexpr_y->sym = sym;
 	fexpr_y->tri = yes;
 	/* add it to satmap */
@@ -653,17 +661,14 @@ static bool convert_fexpr_to_nnf_util(struct fexpr *e)
 		} 
 		/* double negation */
 		else if (e->left->type == FE_NOT) {
-			if (e->left->left->type == FE_SYMBOL || e->left->left->type == FE_FALSE) {
-				e->type = FE_SYMBOL;
-				//str_free(&e->name);
+			if (e->left->left->type == FE_SYMBOL || e->left->left->type == FE_CHOICE) {
+				e->type = e->left->left->type;
 				e->name = str_new();
 				str_append(&e->name, str_get(&e->left->left->name));
 				e->satval = e->left->left->satval;
 				e->sym = e->left->left->sym;
-				// TODO double check that
-				/* if (e->left->left->tristate)
-					e->tristate = e->left->left->tristate;
-				*/
+				if (e->type == FE_SYMBOL)
+					e->tri = e->left->left->tri;
 				return true;
 			} else if (e->left->left->type == FE_AND || e->left->left->type == FE_OR) {
 				e->type = e->left->left->type;
