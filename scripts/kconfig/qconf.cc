@@ -67,6 +67,10 @@ static inline QString qgettext(const char* str)
 #define RANDOM_TESTING 1
 #define MANUAL_TESTING 2
 static int testing_mode = RANDOM_TESTING;
+// number of random conflict to be generated
+#define NO_CONFLICTS 2
+// maximum no. symbols in a random conflict
+#define MAX_CONFLICT_SIZE 3
 
 #define RESULTS_FILE "results.csv"
 
@@ -1528,31 +1532,84 @@ void ConflictsView::testRandomConlict(void)
  */
 #ifdef CONFIGFIX_TEST
 
-	// initialise result string
-	result_string = str_new();
-	// column 1 - Architecture
-	append_result(getenv("ARCH"));
-	// column 2 - Configuration sample
-	append_result((char*) conf_get_configname());
-	// column 3 - KCONFIG_PROBABILITY used to generate the sample
-	append_result(getenv("CONFIGFIX_TEST_PROBABILITY"));
-	// column 4 - Tristates
-	if (tristates)
-		append_result("YES");
-	else
-		append_result("NO");
+	/* In MANUAL_TESTING mode, only verify already calculated diagnoses */
+	if (testing_mode == MANUAL_TESTING) {
+		verifyDiagnoses(""); // result prefix not needed
+		/* 
+	     * If the conflict was created manually and resolved
+	 	 * by clicking the 'Verify Fixes' button, switch to 
+		 * RANDOM_TESTING mode.
+		 */
+		testConflictAction->setText("Test Random Conflict");
+		testing_mode = RANDOM_TESTING;
+		return;
+	} 
 
-	// RANDOM_TESTING - generate and resolve random conflicts
-	if (testing_mode == RANDOM_TESTING) {
+	/* 
+	 * In RANDOM_TESTING mode, generate and resolve a number
+	 * of random conflicts, verify fixes, and save results to file.
+	 */
+ 	if (testing_mode == RANDOM_TESTING) {
 
-		generateConflict();
-		if(conflictsTable->rowCount() == 0) {
-			printf("Conflicts table is empty\n");
-			return;
+		// generate conflists with 1..MAX_CONFLICT_SIZE symbols,
+		for (conflict_size=1; conflict_size<=MAX_CONFLICT_SIZE; conflict_size++) 
+		// NO_CONFLICTS of each size
+		for (int i=0; i<NO_CONFLICTS; i++) 
+		{
+
+			/* If the current conflict_dir exists (conflict.txt was saved 
+			   there), this call will re-calculate that value */
+			conflict_dir = get_conflict_dir();
+
+			// initialise result string
+			result_string = str_new();
+			// column 1 - Architecture
+			append_result(getenv("ARCH"));
+			// column 2 - Configuration sample
+			append_result((char*) conf_get_configname());
+			// column 3 - KCONFIG_PROBABILITY used to generate the sample
+			append_result(getenv("CONFIGFIX_TEST_PROBABILITY"));
+			// column 4 - Tristates
+			if (tristates)
+				append_result("YES");
+			else
+				append_result("NO");
+
+			// generate conflict & find fixes
+			generateConflict();
+			saveConflict();
+			calculateFixes();
+
+			// output result and continue if no solution found
+			if (solution_output == nullptr || solution_output->len == 0) {
+				// set remaining result columns to "-"
+				// column 10 - Diag. index
+				append_result("-");
+				// column 11 - Diag. size
+				append_result("-");
+				// column 12 - Resolved
+				append_result("-");
+				// column 13 - Applied
+				append_result("-");
+
+				output_result();
+			} 
+			// otherwise verify diagnoses
+			else {
+				// common result prefix for all diagnoses
+				gstr result_prefix = str_new();
+				str_append(&result_prefix, str_get(&result_string));
+				str_free(&result_string);
+
+				// verify diagnoses
+				verifyDiagnoses(str_get(&result_prefix));
+				str_free(&result_prefix);
+			}
+
 		}
-		saveConflict();
-		calculateFixes();
 	}
+
+
 
 	// output result and return if no solution found
 	if (solution_output == nullptr || solution_output->len == 0) {
@@ -1809,8 +1866,8 @@ static bool verify_diagnosis(int i, const char *result_prefix,
 	/* 
 	 * Initialise result string with:
 	 * - column 1-9 - common prefix passed as argument
-	 * - column 10  - Diagnosis index
-	 * - column 11  - Diagnosis size
+	 * - column 10  - Diag. index
+	 * - column 11  - Diag. size
 	 */
 	result_string = str_new();
 	str_append(&result_string, result_prefix);
@@ -1828,24 +1885,26 @@ static bool verify_diagnosis(int i, const char *result_prefix,
 	 */
 	// status flags
 	bool 
-		// check 1 - apply fixes
-		APPLIED = false,      
+		// check 1 - conflict resolved
+		RESOLVED = false,  
+		// check 2 - fix fully applied
+		APPLIED = false,
 		// config reset error
 		ERR_RESET = false,    
-		// check 2 - save & reload config - should match
+		// save & reload config - should match
 		CONFIGS_MATCH = false,
-		// check 3 - dependencies met
+		// dependencies met
 		DEPS_MET = false,
 		// result
 		VALID = false; 
 
 
-	/* Check 1 - apply the fixes */
+	/* Apply the symbol fixes */
 
 	int permutation_count = 0;
 
 	/* 
-	 * Collect indices in the diagnosis fixes.
+	 * Collect indices of the symbol fixes in the diagnosis.
 	 * std::next_permutation() generates lexicographically larger permutations,
 	 * hence its argument array should be initially sorted in ascending order.
 	 */
@@ -1858,28 +1917,37 @@ static bool verify_diagnosis(int i, const char *result_prefix,
 		permutation = rearrange_diagnosis(diag, fix_idxs);
 		permutation_count++;
 
-		/* Verifying target values directly after apply_fix() may fail */
 		// if (apply_fix(permutation) && verify_resolution(conflictsTable)) {
 		// 	APPLIED = true;
 		// 	verify_fix_target_values(permutation);
 		// 	break;
 		
-		/* Therefore config must be saved before verifying target values */ 
-		if (apply_fix(permutation)) {
-			GHashTable *before_write = config_backup();
+		/* Verifying target values directly after apply_fix() may fail.
+		   Therefore config must be saved before verifying target values. */ 
+		if (apply_fix(permutation)) { // FIXME remove if
+			// GHashTable *before_write = config_backup();
 			conf_write(".config.applied");
 			// reload, compare
-			conf_read(".config.applied");
-			if (config_compare(before_write) != 0)
-				// new values propagated
-				printf(".config.applied: config & backup mismatch\n");
-			g_hash_table_destroy(before_write);
+			// conf_read(".config.applied");
+			// if (config_compare(before_write) != 0)
+			// 	// new values propagated
+			// 	printf(".config.applied: config & backup mismatch\n");
+			// g_hash_table_destroy(before_write);
 
-			// this function check both conflict and fix symbols
-			if (verify_fix_target_values(permutation)) { // && verify_resolution(conflictsTable)) {
-				APPLIED = true;
-				break;
+			// check 1 - conflict resolved
+			if (verify_resolution(conflictsTable)) {
+				RESOLVED = true;
 			}
+
+			// check 2 - fix applied
+			if (verify_fix_target_values(permutation)) { 
+				APPLIED = true;
+			}
+
+			// exit loop if the conflict is resolved
+			if (RESOLVED)
+				break;
+
 		} else {
 			//DEBUG
 			// config_compare(initial_config);
@@ -1894,15 +1962,15 @@ static bool verify_diagnosis(int i, const char *result_prefix,
 			}
 
 			// DEBUG
-			printf("TEST FAILED\n");
+			printf("TEST FAILED\n\n");
 			// DEBUG
 
 			g_array_free(permutation, false);
 		} 
 	} while ( std::next_permutation(fix_idxs, fix_idxs+size) );
 
-	printf("%s (%d permutations tested)\n", 
-		APPLIED ? "SUCCESS" : "FAILURE", permutation_count);
+	printf("Conflict resolution status: %s (%d permutations tested)\n", 
+		RESOLVED ? "SUCCESS" : "FAILURE", permutation_count);
 	
 	// g_array_free(permutation, false);
 	g_clear_pointer(&permutation, g_ptr_array_unref);
@@ -1911,81 +1979,92 @@ static bool verify_diagnosis(int i, const char *result_prefix,
 	char diag_prefix[strlen("diagXX") + 1]; 
 	sprintf(diag_prefix, "diag%.2d", i);		
 
-	// save_diagnosis(diag, diag_prefix, APPLIED);
-	save_diag_2(diag, diag_prefix, APPLIED);
+	// save_diagnosis(diag, diag_prefix, RESOLVED);
+	save_diag_2(diag, diag_prefix, RESOLVED);
 
 	// skip remaining checks if fixes were not applied
-	if (!APPLIED) {
-		// column 12 - Resolved
-		append_result("NO");
-		// column 13 - Applied
-		append_result((char*) ("NO"));
-		// column 14 - Reset errors
-		append_result((char*) (ERR_RESET ? "YES" : "NO"));
-		output_result();
+	// if (!APPLIED) {
+	// 	// column 12 - Resolved
+	// 	append_result("NO");
+	// 	// column 13 - Applied
+	// 	append_result((char*) ("NO"));
+	// 	// column 14 - Reset errors
+	// 	append_result((char*) (ERR_RESET ? "YES" : "NO"));
+	// 	output_result();
 
-		return false;
+	// 	return false;
+	// }
+
+
+    /* Save & reload config - should match */
+
+	// RANDOM_TESTING only
+	if (testing_mode == RANDOM_TESTING) {
+		gstr config_filename = str_new();
+
+		//e.g. /path/to/config/sample/conflict/.config.diag09
+		// char config_filename[
+		// 	strlen(conflict_dir)
+		// 	+ strlen(".config.") 
+		// 	+ strlen(diag_prefix) + 1];
+
+		// sprintf(config_filename, "%s.config.%s", conflict_dir, diag_prefix); 
+		str_append(&config_filename, conflict_dir);
+		str_append(&config_filename, ".config.");
+		str_append(&config_filename, diag_prefix);
+		
+		// save configuration, make backup		
+		conf_write(str_get(&config_filename));
+		GHashTable *after_write = config_backup();
+
+		// reload, compare
+		conf_read(str_get(&config_filename));
+		if (config_compare(after_write) == 0)
+			CONFIGS_MATCH =  true;
+		else
+			printf("WARNING: reloaded configuration and backup mismatch\n");
+
+		// free memory
+		g_hash_table_destroy(after_write);
+		str_free(&config_filename);
 	}
-
-
-    /* Check 2 - save & reload config - should match */
-
-	// filename e.g. /path/to/config/sample/.config.diag09
-	char config_filename[
-		strlen(conflict_dir)//strlen(get_conflict_dir()) 
-		+ strlen(".config.") 
-		+ strlen(diag_prefix) + 1];
-
-	sprintf(config_filename, "%s.config.%s", conflict_dir, diag_prefix); 
-
-	// save configuration, make backup		
-	conf_write(config_filename);
-	GHashTable *after_write = config_backup();
-
-	// reload, compare
-	conf_read(config_filename);
-	if (config_compare(after_write) == 0)
-		CONFIGS_MATCH =  true;
-	g_hash_table_destroy(after_write);
-
 	// skip the rest if failed
-	if (!CONFIGS_MATCH) {
-		// column 12 - Resolved
-		append_result("NO");
-		// column 13 - Applied
-		append_result((char*) (APPLIED ? "YES" : "NO"));
-		// column 14 - Reset errors
-		append_result((char*) (ERR_RESET ? "YES" : "NO"));
-		// column 15 - Configs match
-		append_result((char*) (CONFIGS_MATCH ? "YES" : "NO"));
-		output_result();
+	// if (!CONFIGS_MATCH) {
+	// 	// column 12 - Resolved
+	// 	append_result("NO");
+	// 	// column 13 - Applied
+	// 	append_result((char*) (APPLIED ? "YES" : "NO"));
+	// 	// column 14 - Reset errors
+	// 	append_result((char*) (ERR_RESET ? "YES" : "NO"));
+	// 	// column 15 - Configs match
+	// 	append_result((char*) (CONFIGS_MATCH ? "YES" : "NO"));
+	// 	output_result();
 
-		return false;
-	}
+	// 	return false;
+	// }
 
 
 	/* Check 3 - check for unmet dependencies */
+	// DEPS_MET = diag_dependencies_met(diag);
 
-	DEPS_MET = diag_dependencies_met(diag);
 
-
-	/* Calculate final value, output result */
-
-	VALID = APPLIED && !ERR_RESET && CONFIGS_MATCH && DEPS_MET;
+	/* Output result */
+	// VALID = APPLIED && !ERR_RESET && CONFIGS_MATCH && DEPS_MET;
 	// column 12 - Resolved
-	append_result((char*) (VALID ? "YES" : "NO"));
+	append_result((char*) (RESOLVED ? "YES" : "NO"));
 	// column 13 - Applied
 	append_result((char*) (APPLIED ? "YES" : "NO"));
-	// column 14 - Reset errors
-	append_result((char*) (ERR_RESET ? "YES" : "NO"));
-	// column 15 - Configs match
-	append_result((char*) (CONFIGS_MATCH ? "YES" : "NO"));
-	// column 16 - Deps. met
-	append_result((char*) (DEPS_MET ? "YES" : "NO"));
+	// // column 14 - Reset errors
+	// append_result((char*) (ERR_RESET ? "YES" : "NO"));
+	// // column 15 - Configs match
+	// append_result((char*) (CONFIGS_MATCH ? "YES" : "NO"));
+	// // column 16 - Deps. met
+	// append_result((char*) (DEPS_MET ? "YES" : "NO"));
 
 	output_result();
-	
-	return VALID;
+	str_free(&result_string);
+
+	return RESOLVED;
 
 
 
@@ -2753,7 +2832,9 @@ static void save_diagnosis(GArray *diag, char* file_prefix, bool valid_diag)
 	printf("\n#\n# diagnosis saved to %s\n#\n", filename);
 }
 
-
+/**
+ * Save a diagnosis in a textfile into the 'conflict_dir'.
+ */
 static void save_diag_2(GArray *diag, char* file_prefix, bool valid_diag)
 {
 	// char *conflict_dir = get_conflict_dir();
@@ -2763,32 +2844,37 @@ static void save_diag_2(GArray *diag, char* file_prefix, bool valid_diag)
 	// sprintf(filename, "%sdiag.txt", conflict_dir);
 	// free(conflict_dir);
 
-	char *configfix_path = getenv("CONFIGFIX_PATH");
-	if (!configfix_path)
-		configfix_path = "";
-		// (char*) getenv("CONFIGFIX_PATH") : "";
-	// char *conflict_dir = get_conflict_dir();
-	char pathname[
-		strlen(configfix_path)
-		+ strlen(conflict_dir) + 1];
-	sprintf(pathname, "%s%s", configfix_path, conflict_dir);
-	// free(conflict_dir);
+	// char *configfix_path = getenv("CONFIGFIX_PATH");
+	// if (!configfix_path)
+	// 	configfix_path = "";
+	// 	// (char*) getenv("CONFIGFIX_PATH") : "";
+	// // char *conflict_dir = get_conflict_dir();
+	// char pathname[
+	// 	strlen(configfix_path)
+	// 	+ strlen(conflict_dir) + 1];
+	// sprintf(pathname, "%s%s", configfix_path, conflict_dir);
+	// // free(conflict_dir);
 
-	QDir().mkpath(pathname);
+	// QDir().mkpath(pathname);
 
+	// only save diagnosis in the RANDOM_TESTING mode
+	if (testing_mode != RANDOM_TESTING)
+		return;
+	
+	// construct name of a file
 	char filename[
-		strlen(pathname) 
+		strlen(conflict_dir) // to be save into 'conflict_dir'
 		+ strlen(file_prefix)
 		+ strlen(valid_diag ? ".VALID" : ".INVALID")
 		+ strlen(".txt") + 1];
 
 	sprintf(filename, "%s%s%s.txt", 
-		pathname, file_prefix, 
+		conflict_dir, file_prefix, 
 		valid_diag ? ".VALID" : ".INVALID");
 	
     QFile file(filename);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        printf("Error: could not save diag_2\n");
+        printf("ERROR: could not save diagnosis\n");
 		return;
 	}
 
