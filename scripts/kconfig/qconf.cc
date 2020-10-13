@@ -1445,7 +1445,7 @@ void ConflictsView::calculateFixes(void)
 	end = clock();
 	time = ((double) (end - start)) / CLOCKS_PER_SEC;
 	printf("Conflict resolution time = %.6f secs.\n\n", time);
-	// result column 7 - Resolution time
+	// result column 8 - Resolution time
 	str_printf(&result_string, "%.6f,", time); 
 #endif
 	free(p);
@@ -1453,14 +1453,14 @@ void ConflictsView::calculateFixes(void)
 	if (solution_output == nullptr || solution_output->len == 0)
 	{
 #ifdef CONFIGFIX_TEST
-		// result column 8 - No. diagnoses (0 in this case)
+		// result column 9 - No. diagnoses (0 in this case)
 		append_result("0,");	
 #endif
 		return;
 	}
 	std::cout << "solution length = " << unsigned(solution_output->len) << std::endl;
 #ifdef CONFIGFIX_TEST
-	// result columns 8 - No. diagnoses (non-zero), 9 - Comments
+	// result columns 9 - No. diagnoses (non-zero), 10 - Comment
 	str_printf(&result_string, "%i,,", solution_output->len);
 #endif
 	solutionSelector->clear();
@@ -1578,6 +1578,8 @@ void ConflictsView::testRandomConlict(void)
 				append_result("YES");
 			else
 				append_result("NO");
+			// column 5 - No. conflict candidates
+			str_printf(&result_string, "%i,", no_conflict_candidates); 
 
 			// generate conflict & find fixes
 			generateConflict();
@@ -1587,13 +1589,13 @@ void ConflictsView::testRandomConlict(void)
 			// output result and continue if no solution found
 			if (solution_output == nullptr || solution_output->len == 0) {
 				// set remaining result columns to "-"
-				// column 10 - Diag. index
+				// column 11 - Diag. index
 				append_result("-");
-				// column 11 - Diag. size
+				// column 12 - Diag. size
 				append_result("-");
-				// column 12 - Resolved
+				// column 13 - Resolved
 				append_result("-");
-				// column 13 - Applied
+				// column 14 - Applied
 				append_result("-");
 
 				output_result();
@@ -1826,9 +1828,9 @@ void ConflictsView::saveConflict(void)
 		fprintf(f, "\n");
 	}
 	
-	// result column 5 - Conflict filename
+	// result column 6 - Conflict filename
 	append_result((char*) str_get(&filename));
-	// result column 6 - Conflict size
+	// result column 7 - Conflict size
 	str_printf(&result_string, "%i,", conflictsTable->rowCount()); 
 
 	fclose(f);
@@ -1842,7 +1844,7 @@ void ConflictsView::saveConflict(void)
  * Verify all present diagnoses. 
  * 
  * For every diagnosis, construct and output a result string 
- * assuming that values common to all diagnoses (columns 1-8) 
+ * assuming that values common to all diagnoses (columns 1-10) 
  * are supplied in the 'result_prefix'.
  */
 void ConflictsView::verifyDiagnoses(const char *result_prefix) // const char*?
@@ -1896,9 +1898,9 @@ static bool verify_diagnosis(int i, const char *result_prefix,
 
 	/* 
 	 * Initialise result string with:
-	 * - column 1-9 - common prefix passed as argument
-	 * - column 10  - Diag. index
-	 * - column 11  - Diag. size
+	 * - column 1-10 - common prefix passed as argument
+	 * - column 11  - Diag. index
+	 * - column 12  - Diag. size
 	 */
 	result_string = str_new();
 	str_append(&result_string, result_prefix);
@@ -2081,9 +2083,9 @@ static bool verify_diagnosis(int i, const char *result_prefix,
 
 	/* Output result */
 	// VALID = APPLIED && !ERR_RESET && CONFIGS_MATCH && DEPS_MET;
-	// column 12 - Resolved
+	// column 13 - Resolved
 	append_result((char*) (RESOLVED ? "YES" : "NO"));
-	// column 13 - Applied
+	// column 14 - Applied
 	append_result((char*) (APPLIED ? "YES" : "NO"));
 	// // column 14 - Reset errors
 	// append_result((char*) (ERR_RESET ? "YES" : "NO"));
@@ -3016,7 +3018,7 @@ static char* get_conflict_dir()
 }
 
 /*
- * Append given string and a semicolumn to result_string.
+ * Append given string followed by a comma to result_string.
  */
 static void append_result(char *s) 
 {
