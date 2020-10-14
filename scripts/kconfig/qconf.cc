@@ -78,14 +78,19 @@ static int testing_mode = RANDOM_TESTING;
 
 #define RESULTS_FILE "results.csv"
 
+/* Persistent configuration statistics */
+static int sym_count = 0;
+// tristates in configuration space
+static bool tristates = false;
+// no. symbols with the value YES or MOD
+static int no_enabled_symbols = 0;
+// no. symbols that conflict with current config
+static int no_conflict_candidates = 0;
+
 // default conflict size
 static int conflict_size = 1;
 // directory where generated conflict is saved
 static char* conflict_dir;
-// tristates in configuration space
-static bool tristates = false;
-// number of symbols that conflict with current config
-static int no_conflict_candidates = 0;
 // result string to be written to RESULTS_FILE
 static gstr result_string = str_new(); // TODO remove call?
 // backup of the initially loaded configuration
@@ -1448,7 +1453,7 @@ void ConflictsView::calculateFixes(void)
 	end = clock();
 	time = ((double) (end - start)) / CLOCKS_PER_SEC;
 	printf("Conflict resolution time = %.6f secs.\n\n", time);
-	// result column 8 - Resolution time
+	// result column 10 - Resolution time
 	str_printf(&result_string, "%.6f,", time); 
 #endif
 	free(p);
@@ -1456,14 +1461,14 @@ void ConflictsView::calculateFixes(void)
 	if (solution_output == nullptr || solution_output->len == 0)
 	{
 #ifdef CONFIGFIX_TEST
-		// result column 9 - No. diagnoses (0 in this case)
+		// result column 11 - No. diagnoses (0 in this case)
 		append_result("0,");	
 #endif
 		return;
 	}
 	std::cout << "solution length = " << unsigned(solution_output->len) << std::endl;
 #ifdef CONFIGFIX_TEST
-	// result columns 9 - No. diagnoses (non-zero), 10 - Comment
+	// result columns 11 - No. diagnoses (non-zero), 12 - Comment
 	str_printf(&result_string, "%i,,", solution_output->len);
 #endif
 	solutionSelector->clear();
@@ -1576,12 +1581,16 @@ void ConflictsView::testRandomConlict(void)
 			append_result((char*) conf_get_configname());
 			// column 3 - KCONFIG_PROBABILITY used to generate the sample
 			append_result(getenv("CONFIGFIX_TEST_PROBABILITY"));
-			// column 4 - Tristates
+			// column 4 - Symbol count
+			str_printf(&result_string, "%i,", sym_count); 
+			// column 5 - Tristates
 			if (tristates)
 				append_result("YES");
 			else
 				append_result("NO");
-			// column 5 - No. conflict candidates
+			// column 6 - No. symbols = YES | MOD
+			str_printf(&result_string, "%i,", no_enabled_symbols); 
+			// column 7 - No. conflict candidates
 			str_printf(&result_string, "%i,", no_conflict_candidates); 
 
 			// generate conflict & find fixes
@@ -1592,13 +1601,13 @@ void ConflictsView::testRandomConlict(void)
 			// output result and continue if no solution found
 			if (solution_output == nullptr || solution_output->len == 0) {
 				// set remaining result columns to "-"
-				// column 11 - Diag. index
+				// column 13 - Diag. index
 				append_result("-");
-				// column 12 - Diag. size
+				// column 14 - Diag. size
 				append_result("-");
-				// column 13 - Resolved
+				// column 15 - Resolved
 				append_result("-");
-				// column 14 - Applied
+				// column 16 - Applied
 				append_result("-");
 
 				output_result();
@@ -1833,9 +1842,9 @@ void ConflictsView::saveConflict(void)
 		fprintf(f, "\n");
 	}
 	
-	// result column 6 - Conflict filename
+	// result column 8 - Conflict filename
 	append_result((char*) str_get(&filename));
-	// result column 7 - Conflict size
+	// result column 9 - Conflict size
 	str_printf(&result_string, "%i,", conflictsTable->rowCount()); 
 
 	fclose(f);
@@ -1849,7 +1858,7 @@ void ConflictsView::saveConflict(void)
  * Verify all present diagnoses. 
  * 
  * For every diagnosis, construct and output a result string 
- * assuming that values common to all diagnoses (columns 1-10) 
+ * assuming that values common to all diagnoses (columns 1-12) 
  * are supplied in the 'result_prefix'.
  */
 void ConflictsView::verifyDiagnoses(const char *result_prefix) // const char*?
@@ -1903,9 +1912,9 @@ static bool verify_diagnosis(int i, const char *result_prefix,
 
 	/* 
 	 * Initialise result string with:
-	 * - column 1-10 - common prefix passed as argument
-	 * - column 11  - Diag. index
-	 * - column 12  - Diag. size
+	 * - column 1-12 - common prefix passed as argument
+	 * - column 13  - Diag. index
+	 * - column 14  - Diag. size
 	 */
 	result_string = str_new();
 	str_append(&result_string, result_prefix);
@@ -2057,9 +2066,9 @@ static bool verify_diagnosis(int i, const char *result_prefix,
 
 	/* Output result */
 	// VALID = APPLIED && !ERR_RESET && CONFIGS_MATCH && DEPS_MET;
-	// column 13 - Resolved
+	// column 15 - Resolved
 	append_result((char*) (RESOLVED ? "YES" : "NO"));
-	// column 14 - Applied
+	// column 16 - Applied
 	append_result((char*) (APPLIED ? "YES" : "NO"));
 	// // column 14 - Reset errors
 	// append_result((char*) (ERR_RESET ? "YES" : "NO"));
@@ -2312,12 +2321,12 @@ static GHashTable* config_backup()
 
 	printf("\nBacking up configuration...\n");
 
-	int i, sym_count = 0, duplicates = 0, unknowns = 0;
+	int i, count = 0, duplicates = 0, unknowns = 0;
 	struct symbol *sym;
 	char* val;
 	for_all_symbols(i, sym) {
 
-		sym_count++;
+		count++;
 
 		if (sym_get_type(sym) == S_UNKNOWN) {
 			unknowns++;
@@ -2339,7 +2348,7 @@ static GHashTable* config_backup()
 	}
 
 	printf("Done: iterated %i symbols, %i symbols in backup table, %i UNKNOWNs ignored \n\n", 
-		sym_count, g_hash_table_size(backup), unknowns);
+		count, g_hash_table_size(backup), unknowns);
 	return backup;
 }
 
@@ -2363,11 +2372,11 @@ static int config_compare(GHashTable *backup)
 	// 	}
 
 	struct symbol *sym;
-	int i, sym_count = 0, match = 0, mismatch = 0, unknowns = 0;
+	int i, count = 0, match = 0, mismatch = 0, unknowns = 0;
 	char *backup_val, *current_val;
 	for_all_symbols(i, sym) {
 
-		sym_count++;
+		count++;
 
 		if (sym_get_type(sym) == S_UNKNOWN) {
 			unknowns++;
@@ -2394,7 +2403,7 @@ static int config_compare(GHashTable *backup)
 	}
 	//DEBUG
 	// printf("Done: %i symbols compared (%i match, %i mismatch), %i UNKNOWNs ignored\n", 
-	// 	sym_count, match, mismatch, unknowns);
+	// 	count, match, mismatch, unknowns);
 	
 	// printf("Current configuration and backup %s\n", mismatch ? "MISMATCH" : "MATCH");		
 	//DEBUG
@@ -2691,7 +2700,8 @@ static void print_config_stats(ConfigList *list)
 	printf("Conflict candidates: %i config items (%i symbols)\n", 
 		conf_item_candidates, sym_candidates);
 	
-	// set static variable
+	// set static variables
+	sym_count = count;
 	no_conflict_candidates = sym_candidates;
 
 	//DEBUG
@@ -2752,8 +2762,10 @@ static void print_sample_stats() {
 	printf("%9d  %6d %6d  %5d %5d %5d\n", 
 		count, bool_y, bool_n, tri_y, tri_m, tri_n);
 
+	// set static variables
 	if (tri_y+tri_m+tri_n > 0)
 		tristates = true;
+	no_enabled_symbols = bool_y + tri_y + tri_m;
 }
 
 
