@@ -116,6 +116,10 @@ static bool verify_changed_symbols(GArray *diag);
 static char* get_config_dir(void);
 static char* get_conflict_dir(void);
 static char* get_results_file(void);
+
+static GArray* rearrange_diagnosis_(GArray *diag);
+// determines diagnosis order in the above function
+static bool reverse_diag_order = false;
 #endif
 
 ConfigSettings::ConfigSettings()
@@ -1942,13 +1946,14 @@ static bool verify_diagnosis(int i, const char *result_prefix,
 	 * std::next_permutation() generates lexicographically larger permutations,
 	 * hence its argument array should be initially sorted in ascending order.
 	 */
-	int fix_idxs[size];
-	for (int k=0; k<size; k++)
-		fix_idxs[k] = k;
+	// int fix_idxs[size];
+	// for (int k=0; k<size; k++)
+	// 	fix_idxs[k] = k;
 
 	GArray *permutation;
-	do {
-		permutation = rearrange_diagnosis(diag, fix_idxs);
+	// do {
+	while ( permutation_count < 2 ) {
+		permutation = rearrange_diagnosis_(diag); //rearrange_diagnosis(diag, fix_idxs);
 		permutation_count++;
 
 		/* Verifying target values directly after apply_fix() may fail.
@@ -1985,7 +1990,7 @@ static bool verify_diagnosis(int i, const char *result_prefix,
 
 			g_array_free(permutation, false);
 		} 
-	} while ( std::next_permutation(fix_idxs, fix_idxs+size) );
+	} //while ( std::next_permutation(fix_idxs, fix_idxs+size) );
 
 	printf("Conflict resolution status: %s (%d permutations tested)\n", 
 		RESOLVED ? "SUCCESS" : "FAILURE", permutation_count);
@@ -2765,8 +2770,7 @@ static GArray* rearrange_diagnosis(GArray *diag, int fix_idxs[])
 	// }
 
 	GArray* permutation = g_array_new(false,false,sizeof(struct symbol_fix*));
-	int i;
-	for (i = 0; i < diag->len; i++) {
+	for (int i = 0; i < diag->len; i++) {
 		g_array_append_val(
 			// insert into new array
 			permutation,
@@ -2776,6 +2780,36 @@ static GArray* rearrange_diagnosis(GArray *diag, int fix_idxs[])
 	}
 	return permutation;
 }
+
+/**
+ * Returns an as-is or a reversed copy of the argument diagnosis, 
+ * depending on the 'reverse_diag_order' flag.
+ * The flag value is reversed before the function returns.
+ */
+static GArray* rearrange_diagnosis_(GArray *diag)
+{
+	GArray* result = g_array_new(false,false,sizeof(struct symbol_fix*));
+
+	for (int i = 0; i < diag->len; i++) {
+		// reverse value
+		if (reverse_diag_order)
+			g_array_prepend_val(
+				result,
+				g_array_index(diag, struct symbol_fix*, i)
+			);
+		// exact copy
+		else 
+			g_array_append_val(
+				result,
+				g_array_index(diag, struct symbol_fix*, i)
+			);
+	}
+
+	reverse_diag_order = !reverse_diag_order;
+
+	return result;
+}
+
 
 /*
  * Save diagnosis using filename that combines given prefix and 
