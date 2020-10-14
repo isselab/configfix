@@ -109,7 +109,6 @@ static void print_config_stats(ConfigList *list);
 static void print_sample_stats();
 static GArray* rearrange_diagnosis(GArray *diag, int fix_idxs[]);
 static void save_diagnosis(GArray *diag, char* file_prefix, bool valid_diag);
-static void save_diag_2(GArray *diag, char* file_prefix, bool valid_diag);
 static bool verify_diagnosis(int i, const char *result_prefix, GArray *diag, QTableWidget* conflictsTable);
 static bool verify_fix_target_values(GArray *diag);
 static bool verify_resolution(QTableWidget* conflictsTable);
@@ -1952,22 +1951,10 @@ static bool verify_diagnosis(int i, const char *result_prefix,
 		permutation = rearrange_diagnosis(diag, fix_idxs);
 		permutation_count++;
 
-		// if (apply_fix(permutation) && verify_resolution(conflictsTable)) {
-		// 	APPLIED = true;
-		// 	verify_fix_target_values(permutation);
-		// 	break;
-		
 		/* Verifying target values directly after apply_fix() may fail.
 		   Therefore config must be saved before verifying target values. */ 
-		if (apply_fix(permutation)) { // FIXME remove if
-			// GHashTable *before_write = config_backup();
+		if (apply_fix(permutation)) { // at least 1 symbol must be applied => returns > 0
 			conf_write(".config.applied");
-			// reload, compare
-			// conf_read(".config.applied");
-			// if (config_compare(before_write) != 0)
-			// 	// new values propagated
-			// 	printf(".config.applied: config & backup mismatch\n");
-			// g_hash_table_destroy(before_write);
 
 			// check 1 - conflict resolved
 			if (verify_resolution(conflictsTable)) {
@@ -1984,11 +1971,7 @@ static bool verify_diagnosis(int i, const char *result_prefix,
 				break;
 
 		} else {
-			//DEBUG
-			// config_compare(initial_config);
-			//DEBUG
 			config_reset();
-			// emit(refreshMenu());
 			if (config_compare(initial_config) != 0) {
 				printf("\nERROR: could not reset configuration after testing permutation:\n");
 				print_diagnosis_symbol(permutation);
@@ -2007,29 +1990,13 @@ static bool verify_diagnosis(int i, const char *result_prefix,
 	printf("Conflict resolution status: %s (%d permutations tested)\n", 
 		RESOLVED ? "SUCCESS" : "FAILURE", permutation_count);
 	
-	// g_array_free(permutation, false);
 	g_clear_pointer(&permutation, g_ptr_array_unref);
 			
 	// filename prefix e.g. diag09
 	char diag_prefix[strlen("diagXX") + 1]; 
 	sprintf(diag_prefix, "diag%.2d", i);		
 
-	// save_diagnosis(diag, diag_prefix, RESOLVED);
-	save_diag_2(diag, diag_prefix, RESOLVED);
-
-	// skip remaining checks if fixes were not applied
-	// if (!APPLIED) {
-	// 	// column 12 - Resolved
-	// 	append_result("NO");
-	// 	// column 13 - Applied
-	// 	append_result((char*) ("NO"));
-	// 	// column 14 - Reset errors
-	// 	append_result((char*) (ERR_RESET ? "YES" : "NO"));
-	// 	output_result();
-
-	// 	return false;
-	// }
-
+	save_diagnosis(diag, diag_prefix, RESOLVED);
 
     /* Save & reload config - should match */
 
@@ -2813,92 +2780,17 @@ static GArray* rearrange_diagnosis(GArray *diag, int fix_idxs[])
 /*
  * Save diagnosis using filename that combines given prefix and 
  * diagnosis status e.g. diag02.VALID.txt or diag08.INVALID.txt.
+ * The file is saved into the 'conflict_dir'.
  */
 static void save_diagnosis(GArray *diag, char* file_prefix, bool valid_diag)
 {
-	// char *conflict_dir = get_conflict_dir();
-	char filename[
-		strlen(conflict_dir) 
-		+ strlen(file_prefix)
-		+ strlen(valid_diag ? ".VALID" : ".INVALID")
-		+ strlen(".txt") + 1];
-	sprintf(filename, "%s%s%s.txt", 
-		conflict_dir, file_prefix, 
-		valid_diag ? ".VALID" : ".INVALID");
-//	printf("Conflict directory: %s\n", conflict_dir);
-	// free(conflict_dir);
-
-//DEBUG
-	// construct filename
-	// char filename[
-		// strlen(conflict_dir) 
-	    // + strlen("conflict.txt")  + 1];
-	// sprintf(filename, "%sconflict.txt", conflict_dir);
-	// free(conflict_dir);
-
-    // FILE* f = fopen(filename, "w");
-    // if(!f) {
-    //     printf("Error: could not save conflict\n");
-	// 	return;
-    // }
-//DEBUG
-
-	printf("Diagnosis filename: %s\n", filename);
-	FILE* f = fopen(filename, "w");
-	if (!f) {
-		printf("Error: could not save diagnosis\n");
-		return;
-	}
-
-	int i;
-	struct symbol_fix *fix;
-	for_every_fix(diag, i, fix) {
-	// for (i = 0; i < diag_sym->len; i++) {
-		// fix = g_array_index(diag_sym, struct symbol_fix *, i);
-		
-		if (fix->type == SF_BOOLEAN)
-			fprintf(f, "%s => %s\n", fix->sym->name, tristate_get_char(fix->tri));
-		else if (fix->type == SF_NONBOOLEAN)
-			fprintf(f, "%s => %s\n", fix->sym->name, str_get(&fix->nb_val));
-		else
-			perror("NB not yet implemented.");
-	}
-	fclose(f);
-	printf("\n#\n# diagnosis saved to %s\n#\n", filename);
-}
-
-/**
- * Save a diagnosis in a textfile into the 'conflict_dir'.
- */
-static void save_diag_2(GArray *diag, char* file_prefix, bool valid_diag)
-{
-	// char *conflict_dir = get_conflict_dir();
-	// char filename[
-	// 	strlen(conflict_dir) 
-	//     + strlen("diag.txt")  + 1];
-	// sprintf(filename, "%sdiag.txt", conflict_dir);
-	// free(conflict_dir);
-
-	// char *configfix_path = getenv("CONFIGFIX_PATH");
-	// if (!configfix_path)
-	// 	configfix_path = "";
-	// 	// (char*) getenv("CONFIGFIX_PATH") : "";
-	// // char *conflict_dir = get_conflict_dir();
-	// char pathname[
-	// 	strlen(configfix_path)
-	// 	+ strlen(conflict_dir) + 1];
-	// sprintf(pathname, "%s%s", configfix_path, conflict_dir);
-	// // free(conflict_dir);
-
-	// QDir().mkpath(pathname);
-
 	// only save diagnosis in the RANDOM_TESTING mode
 	if (testing_mode != RANDOM_TESTING)
 		return;
 	
 	// construct name of a file
 	char filename[
-		strlen(conflict_dir) // to be save into 'conflict_dir'
+		strlen(conflict_dir) // to be saved into 'conflict_dir'
 		+ strlen(file_prefix)
 		+ strlen(valid_diag ? ".VALID" : ".INVALID")
 		+ strlen(".txt") + 1];
@@ -2917,15 +2809,11 @@ static void save_diag_2(GArray *diag, char* file_prefix, bool valid_diag)
 
 	int i;
 	struct symbol_fix *fix;
+	
 	for_every_fix(diag, i, fix) {
-	// for (i = 0; i < diag_sym->len; i++) {
-		// fix = g_array_index(diag_sym, struct symbol_fix *, i);
-		
 		if (fix->type == SF_BOOLEAN)
-			// fprintf(f, "%s => %s\n", fix->sym->name, tristate_get_char(fix->tri));
 			out << fix->sym->name << " => " << tristate_get_char(fix->tri) << "\n";
 		else if (fix->type == SF_NONBOOLEAN)
-			// fprintf(f, "%s => %s\n", fix->sym->name, str_get(&fix->nb_val));
 			out << fix->sym->name << " => " << str_get(&fix->nb_val) << "\n"; 
 		else
 			perror("NB not yet implemented.");
