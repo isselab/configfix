@@ -76,6 +76,7 @@ static int testing_mode = RANDOM_TESTING;
 // number of random conflicts of each size
 #define NO_CONFLICTS 5
 
+#define BASE_CONFIG ".config.base"
 #define RESULTS_FILE "results.csv"
 
 /* Persistent configuration statistics */
@@ -93,8 +94,8 @@ static int conflict_size = 1;
 static char* conflict_dir;
 // result string to be written to RESULTS_FILE
 static gstr result_string = str_new(); // TODO remove call?
-// backup of the initially loaded configuration
-static GHashTable* initial_config;
+// backups of the base config and the given configuration sample
+static GHashTable* base_config, initial_config;
 
 static void append_result(char *str);
 static void output_result();
@@ -4113,6 +4114,12 @@ int main(int ac, char** av)
 
 	conf_parse(name);
 	fixup_rootmenu(&rootmenu);
+#ifdef CONFIGFIX_TEST
+	// backup base configuration
+	conf_read(BASE_CONFIG);
+	base_config = config_backup();
+#endif
+	// read configuration sample after that
 	conf_read(NULL);
 	//zconfdump(stdout);
 #ifdef CONFIGFIX_TEST
