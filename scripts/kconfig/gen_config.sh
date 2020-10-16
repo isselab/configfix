@@ -69,12 +69,21 @@ PROBABILITIES="10 20 30 40 50 60 70 80 90"
 
 cd ../../
 
+# generate base configuration, forward KCONFIG_SEED printout
+make randconfig 2> generate.sh
+
+# move files files
+mkdir -p $CONFIGFIX_TEST_PATH/$ARCH
+mv .config $CONFIGFIX_TEST_PATH/$ARCH/.config.base
+chmod +x generate.sh
+mv generate.sh $CONFIGFIX_TEST_PATH/$ARCH
+
 # for each probability
 for PROBABILITY in $PROBABILITIES; do
 
   CONFIG_FILENAME=.config.$PROBABILITY
 
-  # generate config, forward KCONFIG_SEED printout
+  # generate config sample, forward KCONFIG_SEED printout
   export KCONFIG_PROBABILITY=$PROBABILITY
   make randconfig 2> generate.sh
   
