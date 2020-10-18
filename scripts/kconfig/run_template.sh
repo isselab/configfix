@@ -41,6 +41,10 @@ cd $CONFIGFIX_PATH
 # scripts/kconfig/qconf Kconfig "$@" # pass eventual extra arguments to xconfig
 make cftestconfig
 
+# remove base config and config sample to prevent using them in unrelated tests
+rm .config.base
+rm .config
+
 # unset variables
 unset CONFIGFIX_TEST_CONFIG_DIR
 unset CONFIGFIX_TEST_PROBABILITY
