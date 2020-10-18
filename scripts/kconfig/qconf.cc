@@ -95,12 +95,13 @@ static char* conflict_dir;
 // result string to be written to RESULTS_FILE
 static gstr result_string = str_new(); // TODO remove call?
 // backups of the base config and the given configuration sample
-static GHashTable* base_config, initial_config;
+static GHashTable *base_config, *initial_config;
 
 static void append_result(char *str);
 static void output_result();
 static bool sym_has_conflict(struct symbol *sym);
 static int sym_has_blocked_values(struct symbol *sym);
+static bool sym_enabled_in_base_config(struct symbol *sym);
 static tristate random_blocked_value(struct symbol *sym);
 static GHashTable* config_backup(void);
 static int config_compare(GHashTable *backup);
@@ -193,7 +194,7 @@ void ConfigItem::okRename(int col)
 void ConfigItem::updateMenu(void)
 {
 	ConfigList* list;
-	struct symbol* sym;
+	struct symbol *sym;
 	struct property *prop;
 	QString prompt;
 	int type;
@@ -563,7 +564,7 @@ update:
 
 void ConfigList::setValue(ConfigItem* item, tristate val)
 {
-	struct symbol* sym;
+	struct symbol *sym;
 	int type;
 	tristate oldval;
 
@@ -588,7 +589,7 @@ void ConfigList::setValue(ConfigItem* item, tristate val)
 
 void ConfigList::changeValue(ConfigItem* item)
 {
-	struct symbol* sym;
+	struct symbol *sym;
 	struct menu* menu;
 	int type, oldexpr, newexpr;
 
@@ -1262,7 +1263,7 @@ void ConflictsView::addSymbol(struct menu *m)
 	// adds a symbol to the conflict resolver list
 	if (m != nullptr){
 		if (m->sym != nullptr){
-			struct symbol* sym = m->sym;
+			struct symbol *sym = m->sym;
 			tristate currentval = sym_get_tristate_value(sym);
 			//if symbol is not added yet:
 			QAbstractItemModel* tableModel = conflictsTable->model();
@@ -1318,7 +1319,7 @@ void ConflictsView::cellClicked(int row, int column)
 	auto itemText = conflictsTable->item(row,0)->text().toUtf8().data();
 
 
-	struct symbol* sym = sym_find(itemText);
+	struct symbol *sym = sym_find(itemText);
 	if (sym == NULL)
 	{
 		std::cerr << "symbol is nullptr: " << std::endl;
@@ -1437,7 +1438,7 @@ void ConflictsView::calculateFixes(void)
 	{
 		struct symbol_dvalue *tmp = (p+i);
 		auto _symbol = conflictsTable->item(i,0)->text().toUtf8().data();
-		struct symbol* sym = sym_find(_symbol);
+		struct symbol *sym = sym_find(_symbol);
 
 		tmp->sym = sym;
 		tmp->type = static_cast<symboldv_type>(sym->type == symbol_type::S_BOOLEAN?0:1);
@@ -1495,7 +1496,7 @@ void ConflictsView::changeAll(void)
 	// // call sym_set_tristate_value() if it is tristate or boolean.
 	// for (int i = 0; i < constraints.length() ; i++)
 	// {
-	// 	struct symbol* sym = sym_find(constraints[i].symbol.toStdString().c_str());
+	// 	struct symbol *sym = sym_find(constraints[i].symbol.toStdString().c_str());
 	// 	if(!sym)
 	// 		return;
 	// 	int type = sym_get_type(sym);
@@ -1699,7 +1700,7 @@ void ConflictsView::generateConflict(void)
 		// iterate menu items
 		QTreeWidgetItemIterator it(configList);
 		ConfigItem* item;
-		struct symbol* sym;
+		struct symbol *sym;
 
 		while (*it) 
 		{
@@ -1748,7 +1749,7 @@ void ConflictsView::generateConflict(void)
 		printf("------------------------------\n");
 		for (int i = 0; i < conflictsTable->rowCount(); i++) {
 			auto _symbol = conflictsTable->item(i,0)->text().toUtf8().data();
-			struct symbol* sym = sym_find(_symbol);
+			struct symbol *sym = sym_find(_symbol);
 
 			if (!sym) {
 				printf("ERROR: conflict symbol %s not found\n", _symbol);
@@ -1805,7 +1806,7 @@ void ConflictsView::saveConflict(void)
 	for (int i = 0; i < conflictsTable->rowCount(); i++)
 	{
 		auto _symbol = conflictsTable->item(i,0)->text().toUtf8().data();
-		struct symbol* sym = sym_find(_symbol);
+		struct symbol *sym = sym_find(_symbol);
 
 		if (!sym) {
 			printf("ERROR: conflict symbol %s not found\n", _symbol);
@@ -2568,7 +2569,7 @@ static void print_config_stats(ConfigList *list)
 	// iterate menus
 	QTreeWidgetItemIterator it(list);
 	ConfigItem* item;
-	struct symbol* sym;
+	struct symbol *sym;
 
 	// collect statistics
 	int count=0, menuless=0, invisible=0, unknown=0,
@@ -2726,7 +2727,7 @@ static void print_sample_stats() {
 	str_append(&sample_stats, (char*) conf_get_configname());
 	str_append(&sample_stats, ",");
 
-	struct symbol* sym;
+	struct symbol *sym;
 	for_all_symbols(i, sym) {
 		count++;
 
@@ -3015,7 +3016,11 @@ static bool sym_has_conflict(struct symbol *sym)
  */
 static int sym_has_blocked_values(struct symbol *sym)
 {
-	if (!sym_is_boolean(sym))// || sym->visible == no)
+	if (!sym_is_boolean(sym))
+		return 0;
+
+	// ignore symbols disabled in the base config
+	if (!sym_enabled_in_base_config(sym))
 		return 0;
 
 	int result = 0;
@@ -3033,6 +3038,24 @@ static int sym_has_blocked_values(struct symbol *sym)
 		result++;
 
 	return result;
+}
+
+/**
+ * Returns 'true' if a bool/tristate symbol has value 'yes' or 'mod'
+ * in the base configuration, 'false' otherwise.
+ */
+static bool sym_enabled_in_base_config(struct symbol *sym)
+{
+	char *base_val  = (char*) g_hash_table_lookup(base_config, sym_get_name(sym));
+	if (base_val == NULL) {
+		printf("ERROR: symbol missing in base config");
+		return false;
+	}
+
+	if (strcmp(base_val, "y") == 0 || strcmp(base_val, "m") == 0)
+		return true;
+		
+	return false;
 }
 
 /**
@@ -3183,7 +3206,7 @@ void ConfigInfoView::symbolInfo(void)
 
 void ConfigInfoView::menuInfo(void)
 {
-	struct symbol* sym;
+	struct symbol *sym;
 	QString head, debug, help;
 
 	sym = _menu->sym;
@@ -4118,6 +4141,15 @@ int main(int ac, char** av)
 	// backup base configuration
 	conf_read(BASE_CONFIG);
 	base_config = config_backup();
+	//DEBUG SYMBOL
+	// struct symbol *sym = sym_find("EDAC_MV64X60");
+	// printf("\t%s %s (visible: %s, flags: %#x): curr = %s, def[S_DEF_USER] = %s\n", 
+	// 	sym_type_name(sym->type), sym->name, 
+	// 	sym->visible == no ? "n" : (sym->visible == mod ? "m" : "y"), 
+	// 	sym->flags, 
+	// 	sym_get_string_value(sym), 
+	// 	sym->def[S_DEF_USER].tri == no ? "n" : (sym->def[S_DEF_USER].tri == mod ? "m" : "y")); 
+	//DEBUG SYMBOL
 #endif
 	// read configuration sample after that
 	conf_read(NULL);
