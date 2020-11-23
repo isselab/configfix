@@ -265,7 +265,7 @@ public slots:
 // FIXME - make work with #ifdef
 // #ifdef CONFIGFIX_TEST
     void switchTestingMode();
-	void testRandomConlict();
+	void testRandomConflict();
 	void generateConflict();
 	void saveConflict();
 	void verifyDiagnoses(const char *result_prefix);

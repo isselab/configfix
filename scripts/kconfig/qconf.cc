@@ -40,6 +40,7 @@
 #include <algorithm>    // std::next_permutation
 #include <random>
 #include <QTextStream>
+#include <QTimer>
 #include <dirent.h>
 #include <time.h>
 
@@ -70,11 +71,13 @@ static inline QString qgettext(const char* str)
 #define MANUAL_TESTING 2
 static int testing_mode = RANDOM_TESTING;
 
-/* Total number of random conflicts is MAX_CONFLICT_SIZE * NO_CONFLICTS */
+/* Total number of conflicts is (MAX_CONFLICT_SIZE - MIN_CONFLICT_SIZE + 1) x NO_CONFLICTS */
+// minimum no. symbols in a random conflict
+#define MIN_CONFLICT_SIZE 7 //4
 // maximum no. symbols in a random conflict
-#define MAX_CONFLICT_SIZE 3
+#define MAX_CONFLICT_SIZE 10 //10
 // number of random conflicts of each size
-#define NO_CONFLICTS 5
+#define NO_CONFLICTS 5 //5
 
 #define BASE_CONFIG ".config.base"
 #define RESULTS_FILE "results.csv"
@@ -1158,7 +1161,7 @@ ConflictsView::ConflictsView(QWidget* parent, const char *name)
 	connect(fixConflictsAction, SIGNAL(triggered(bool)), SLOT(calculateFixes()));
 #ifdef CONFIGFIX_TEST
 	connect(fixConflictsAction, SIGNAL(triggered(bool)), SLOT(switchTestingMode()));
-	connect(testConflictAction, SIGNAL(triggered(bool)), SLOT(testRandomConlict()));
+	connect(testConflictAction, SIGNAL(triggered(bool)), SLOT(testRandomConflict()));
 #endif
 	conflictsTable = (QTableWidget*) new dropAbleView(this);
 	conflictsTable->setRowCount(0);
@@ -1537,7 +1540,7 @@ void ConflictsView::switchTestingMode()
  * In both RANDOM_TESTING and MANUAL_TESTING mode
  * verify fixes, if they are present.
  */
-void ConflictsView::testRandomConlict(void)
+void ConflictsView::testRandomConflict(void)
 {
 /*
  * Keeping this slot empty for 'make xconfig'
@@ -1565,8 +1568,8 @@ void ConflictsView::testRandomConlict(void)
 	 */
  	if (testing_mode == RANDOM_TESTING) {
 
-		// generate conflists with 1..MAX_CONFLICT_SIZE symbols,
-		for (conflict_size=1; conflict_size<=MAX_CONFLICT_SIZE; conflict_size++) 
+		// generate conflists with MIN_CONFLICT_SIZE..MAX_CONFLICT_SIZE symbols,
+		for (conflict_size=MIN_CONFLICT_SIZE; conflict_size<=MAX_CONFLICT_SIZE; conflict_size++) 
 		// NO_CONFLICTS of each size
 		for (int i=0; i<NO_CONFLICTS; i++) 
 		{
@@ -4194,6 +4197,15 @@ int main(int ac, char** av)
 	print_config_stats(configView->list);
 	print_sample_stats();
 	initial_config = config_backup();
+	// timer to trigger the ConflictsView::testRandomConflict() slot
+	QTimer *timer = new QTimer(nullptr);
+	timer->setSingleShot(true);
+    timer->connect(timer, SIGNAL(timeout()), conflictsView, SLOT(testRandomConflict()));
+    timer->start(1000);
+	QTimer *exitTimer = new QTimer(nullptr);
+	exitTimer->setSingleShot(true);
+	exitTimer->connect(exitTimer, SIGNAL(timeout()), configApp, SLOT(quit()), Qt::QueuedConnection);
+	exitTimer->start(20000);
 #endif
 	v->show();
 	configApp->exec();
