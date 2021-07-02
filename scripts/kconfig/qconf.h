@@ -18,9 +18,12 @@
 #include <QList>
 #include <QComboBox>
 #include <QLabel>
+#include <qstring.h>
+#include <thread>
+#include <condition_variable>
+
 #include "expr.h"
 
-#include "conflict_resolver.h"
 #include "configfix.h"
 
 class ConfigView;
@@ -37,7 +40,7 @@ public:
 };
 
 enum colIdx {
-	promptColIdx, nameColIdx, noColIdx, modColIdx, yesColIdx, dataColIdx, colNr
+	promptColIdx, nameColIdx, noColIdx, modColIdx, yesColIdx, dataColIdx
 };
 enum listMode {
 	singleMode, menuMode, symbolMode, fullMode, listMode
@@ -45,6 +48,20 @@ enum listMode {
 enum optionMode {
 	normalOpt = 0, allOpt, promptOpt
 };
+
+enum symbolStatus {
+	UNSATISFIED, SATISFIED
+};
+
+typedef struct {
+	QString symbol;
+	QString change_needed;
+	enum symbolStatus status;
+	tristate change_requested;
+} Constraint;
+
+QString tristate_value_to_string(tristate val);
+tristate string_value_to_tristate(QString s);
 
 class ConfigList : public QTreeWidget {
 	Q_OBJECT
@@ -89,7 +106,7 @@ signals:
 	void itemSelected(struct menu *menu);
 	void parentSelected(void);
 	void gotFocus(struct menu *);
-	void selectionChanged(QList<QTreeWidgetItem*> selection);
+	void selectedChanged(QList<QTreeWidgetItem*> selection);
 	void UpdateConflictsViewColorization();
 
 public:
@@ -233,72 +250,54 @@ class ConflictsView : public QWidget {
 	typedef class QWidget Parent;
 public:
 	ConflictsView(QWidget* parent, const char *name = 0);
-	~ConflictsView(void);
 	void addSymbol(struct menu * m);
 	int current_solution_number = -1;
 
 public slots:
-    void cellClicked(int, int);
-	void changeAll();
-	//triggerd by Qactions on the tool bar that adds/remove symbol
+	void cellClicked(int, int);
 	void addSymbol();
-	//triggered from config list right click -> add symbols
 	void addSymbolFromContextMenu();
 	void removeSymbol();
 	void menuChanged1(struct menu *);
 	void changeToNo();
 	void changeToYes();
 	void changeToModule();
-	void selectionChanged(QList<QTreeWidgetItem*> selection);
-
-
+	void selectedChanged(QList<QTreeWidgetItem*> selection);
 	void applyFixButtonClick();
 	void UpdateConflictsViewColorization();
-
-
-
-  // switches the solution table with selected solution index from  solution_output
-  void changeSolutionTable(int solution_number);
-
-  // calls satconfig to solve to get wanted value to current value
-  void calculateFixes();
+	void updateResults();
+	void changeSolutionTable(int solution_number);
+	void calculateFixes();
 signals:
 	void showNameChanged(bool);
 	void showRangeChanged(bool);
 	void showDataChanged(bool);
-    void conflictSelected(struct menu *);
+	void conflictSelected(struct menu *);
 	void refreshMenu();
+	void resultsReady();
 public:
 	QTableWidget* conflictsTable;
 	QList<Constraint> constraints;
-
-  // the comobox on the right hand side. used to select a solutio after
-  // getting solution from satconfig
-  QComboBox* solutionSelector{nullptr};
-
-  // the table which shows the selected solution showing variable = New value changes
+	QComboBox* solutionSelector{nullptr};
 	QTableWidget* solutionTable{nullptr};
-
-  // Apply fixes button on the solution view
 	QPushButton* applyFixButton{nullptr};
-
-  GArray* solution_output{nullptr};
-
+	struct sfl_list * solution_output{nullptr};
 	QToolBar *conflictsToolBar;
 	struct menu * currentSelectedMenu ;
 	QLabel* numSolutionLabel{nullptr};
-	//currently selected config items in configlist.
 	QList<QTreeWidgetItem*> currentSelection;
-
-	//colorize the symbols
-	// void ColorizeSolutionTable();
-
-
+	QAction *fixConflictsAction_{nullptr};
+	void runSatConfAsync();
+	std::thread* runSatConfAsyncThread{nullptr};
+	std::mutex satconf_mutex;
+	std::condition_variable satconf_cancellation_cv;
+	bool satconf_cancelled{false};
 };
 
 class ConfigInfoView : public QTextBrowser {
 	Q_OBJECT
 	typedef class QTextBrowser Parent;
+	QMenu *contextMenu;
 public:
 	ConfigInfoView(QWidget* parent, const char *name = 0);
 	bool showDebug(void) const { return _showDebug; }
@@ -319,8 +318,7 @@ protected:
 	QString debug_info(struct symbol *sym);
 	static QString print_filter(const QString &str);
 	static void expr_print_help(void *data, struct symbol *sym, const char *str);
-	QMenu *createStandardContextMenu(const QPoint & pos);
-	void contextMenuEvent(QContextMenuEvent *e);
+	void contextMenuEvent(QContextMenuEvent *event);
 
 	struct symbol *sym;
 	struct menu *_menu;
@@ -387,7 +385,7 @@ protected:
 	ConfigView *configView;
 	ConfigList *configList;
 	ConfigInfoView *helpText;
-    ConflictsView *conflictsView;
+	ConflictsView *conflictsView;
 	QToolBar *toolBar;
 	QToolBar *conflictsToolBar;
 	QAction *backAction;
@@ -399,12 +397,10 @@ protected:
 	QSplitter *split3;
 };
 
-class dropAbleView : public QTableWidget
+class droppableView : public QTableWidget
 {
 public:
-    dropAbleView(QWidget *parent = nullptr);
-    ~dropAbleView();
-
+	droppableView(QWidget *parent = nullptr) {}
 protected:
-    void dropEvent(QDropEvent *event);
+	void dropEvent(QDropEvent *event);
 };

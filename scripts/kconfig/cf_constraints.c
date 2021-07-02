@@ -13,13 +13,16 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <ctype.h>
 
 #include "configfix.h"
 
 #define KCR_CMP false
-#define DEBUG_FUN false
+#define NPC_OPTIMISATION true
 
-static void debug_info(void);
+static void get_constraints_bool(void);
+static void get_constraints_select(void);
+static void get_constraints_nonbool(void);
 
 static void build_tristate_constraint_clause(struct symbol *sym);
 
@@ -33,54 +36,50 @@ static void add_dependencies_nonbool(struct symbol *sym);
 static void add_choice_prompt_cond(struct symbol *sym);
 static void add_choice_dependencies(struct symbol *sym);
 static void add_choice_constraints(struct symbol *sym);
-static void add_invisible_constraints(struct symbol *sym, struct property *prompt);
+static void add_invisible_constraints(struct symbol *sym);
 static void sym_nonbool_at_least_1(struct symbol *sym);
 static void sym_nonbool_at_most_1(struct symbol *sym);
-static void sym_add_nonbool_values_from_ranges(struct symbol *sym);
+static void sym_add_nonbool_values_from_default_range(struct symbol *sym);
 static void sym_add_range_constraints(struct symbol *sym);
 static void sym_add_nonbool_prompt_constraint(struct symbol *sym);
 
-static struct default_map * create_default_map_entry(struct fexpr *val, struct fexpr *e);
-static GArray * get_defaults(struct symbol *sym);
-static struct fexpr * get_default_y(GArray *arr);
-static struct fexpr * get_default_m(GArray *arr);
+static struct default_map * create_default_map_entry(struct fexpr *val, struct pexpr *e);
+static struct defm_list * get_defaults(struct symbol *sym);
+static struct pexpr * get_default_y(struct defm_list *list);
+static struct pexpr * get_default_m(struct defm_list *list);
+static struct pexpr *get_default_any(struct symbol *sym);
 static long long sym_get_range_val(struct symbol *sym, int base);
 
 /* -------------------------------------- */
-
-static void debug_info(void)
-{
-	unsigned int i;
-	struct symbol *sym;
-	for_all_symbols(i, sym) {
-
-	}
-}
 
 /*
  * build the constraints for each symbol
  */
 void get_constraints(void)
 {
+	printd("Building constraints...");
+
+	get_constraints_bool();
+	get_constraints_select();
+	get_constraints_nonbool();
+}
+
+/*
+ *  build constraints for boolean symbols
+ */
+void get_constraints_bool(void)
+{
 	unsigned int i;
 	struct symbol *sym;
-	
-	if (DEBUG_FUN) {
-		debug_info();
-		return;
-	}
-	
-	printf("Building constraints...");
-	
-	/* build constraints for boolean symbols */
 	for_all_symbols(i, sym) {
-		
-		if (!sym_is_boolean(sym)) continue;
+
+		if (!sym_is_boolean(sym))
+			continue;
 
 		/* build tristate constraints */
 		if (sym->type == S_TRISTATE)
 			build_tristate_constraint_clause(sym);
-		
+
 		/* build constraints for select statements
 		 * need to treat choice symbols seperately */
 		if (!KCR_CMP) {
@@ -89,7 +88,7 @@ void get_constraints(void)
 			if (sym->rev_dep.expr && !sym_is_choice(sym) && !sym_is_choice_value(sym))
 				add_selects_kcr(sym);
 		}
-		
+
 		/* build constraints for dependencies for booleans */
 		if (sym->dir_dep.expr && !sym_is_choice(sym) && !sym_is_choice_value(sym)) {
 			if (!KCR_CMP)
@@ -97,90 +96,88 @@ void get_constraints(void)
 			else
 				add_dependencies_bool_kcr(sym);
 		}
-		
+
 		/* build constraints for choice prompts */
 		if (sym_is_choice(sym))
 			add_choice_prompt_cond(sym);
-		
+
 		/* build constraints for dependencies (choice symbols and options) */
 		if (sym_is_choice(sym) || sym_is_choice_value(sym))
 			add_choice_dependencies(sym);
-		
+
 		/* build constraints for the choice groups */
 		if (sym_is_choice(sym))
 			add_choice_constraints(sym);
-		
-// 		if (sym->name && strcmp(sym->name, "CRAMFS_MTD") == 0) {
-// 			printf("PRINTING CRAMFS_MTD\n");
-// 			print_symbol(sym);
-// 			print_sym_constraint(sym);
-// 		}
-		
+
+
 		/* build invisible constraints */
-		struct property *prompt = sym_get_prompt(sym);
-		if (prompt != NULL && prompt->visible.expr)
-			add_invisible_constraints(sym, prompt);
-		
+		add_invisible_constraints(sym);
 	}
-	
-	/* 
-	 * build the constraints for select-variables
-	 * skip non-Booleans, choice symbols/options och symbols without rev_dir
-	 */
+}
+
+/*
+* build the constraints for select-variables
+* skip non-Booleans, choice symbols/options och symbols without rev_dir
+*/
+void get_constraints_select(void)
+{
+	unsigned int i;
+	struct symbol *sym;
 	for_all_symbols(i, sym) {
-		
-		if (KCR_CMP) continue;
-		
-		if (!sym_is_boolean(sym)) continue;
-		
-		if (sym_is_choice(sym) || sym_is_choice_value(sym)) continue;
-		
-		if (!sym->rev_dep.expr) continue;
-		
-// 		assert(sym->rev_dep.expr != NULL);
-		if (sym->list_sel_y == NULL) {
+		if (KCR_CMP)
 			continue;
-		}
-        
-		struct fexpr *sel_y = implies(sym->fexpr_sel_y, sym->fexpr_y);
+
+		if (!sym_is_boolean(sym))
+			continue;
+
+		if (sym_is_choice(sym) || sym_is_choice_value(sym))
+			continue;
+
+		if (!sym->rev_dep.expr)
+			continue;
+
+		if (sym->list_sel_y == NULL)
+			continue;
+
+		struct pexpr *sel_y = pexpr_implies(pexf(sym->fexpr_sel_y), pexf(sym->fexpr_y));
 		sym_add_constraint(sym, sel_y);
-		
-		struct fexpr *c1 = implies(sym->fexpr_sel_y, sym->list_sel_y);
-		convert_fexpr_to_nnf(c1);
+
+		struct pexpr *c1 = pexpr_implies(pexf(sym->fexpr_sel_y), sym->list_sel_y);
 		sym_add_constraint(sym, c1);
-		
+
 		/* only continue for tristates */
-		if (sym->type == S_BOOLEAN) continue;
-        
-		struct fexpr *sel_m = implies(sym->fexpr_sel_m, fexpr_or(sym->fexpr_m, sym->fexpr_y));
+		if (sym->type == S_BOOLEAN)
+			continue;
+
+		struct pexpr *sel_m = pexpr_implies(pexf(sym->fexpr_sel_m), sym_get_fexpr_both(sym));
 		sym_add_constraint(sym, sel_m);
-        
-		struct fexpr *c2 = implies(sym->fexpr_sel_m, sym->list_sel_m);
-		convert_fexpr_to_nnf(c2);
+
+		struct pexpr *c2 = pexpr_implies(pexf(sym->fexpr_sel_m), sym->list_sel_m);
 		sym_add_constraint(sym, c2);
 	}
-	
-	/* 
-	 * build constraints for non-booleans
-	 * these constraints might add "known values"
-	 */
+}
+
+/*
+ * build constraints for non-booleans
+ */
+void get_constraints_nonbool(void)
+{
+	unsigned int i;
+	struct symbol *sym;
+
+	/* these constraints might add "known values" */
 	for_all_symbols(i, sym) {
-		
-		if (!sym_is_nonboolean(sym)) continue;
-		
+
+		if (!sym_is_nonboolean(sym))
+			continue;
+
 		/* add known values from the range-attributes */
 		if (sym->type == S_HEX || sym->type == S_INT)
-			sym_add_nonbool_values_from_ranges(sym);
-		
-		/* build invisible constraints */
-// 		struct property *prompt = sym_get_prompt(sym);
-// 		if (prompt != NULL && prompt->visible.expr)
-// 			add_invisible_constraints(sym, prompt);
+			sym_add_nonbool_values_from_default_range(sym);
 
-		/* the symbol must have a value, if there is a prompt */
-		if (sym_has_prompt(sym))
-			sym_add_nonbool_prompt_constraint(sym);
-		
+		/* build invisible constraints */
+		add_invisible_constraints(sym);
+
 		/* add current value to possible values */
 		if (!sym->flags || !(sym->flags & SYMBOL_VALID))
 			sym_calc_value(sym);
@@ -188,48 +185,49 @@ void get_constraints(void)
 		if (strcmp(curr, "") != 0)
 			sym_create_nonbool_fexpr(sym, (char *) curr);
 	}
-	
-	/* 
-	 * build constraints for non-booleans, part deux
-	 * the following constraints will not add any "known values"
-	 */
+
+	/* the following constraints will not add any "known values" */
 	for_all_symbols(i, sym) {
-		
-		if (!sym_is_nonboolean(sym)) continue;
-		
+
+		if (!sym_is_nonboolean(sym))
+			continue;
+
+		/* the symbol must have a value, if there is a prompt */
+		if (sym_has_prompt(sym))
+			sym_add_nonbool_prompt_constraint(sym);
+
 		/* build the range constraints for int/hex */
 		if (sym->type == S_HEX || sym->type == S_INT)
 			sym_add_range_constraints(sym);
-		
+
 		/* build constraints for dependencies for non-booleans */
 		if (sym->dir_dep.expr)
 			add_dependencies_nonbool(sym);
-		
+
 		/* exactly one of the symbols must be true */
 		sym_nonbool_at_least_1(sym);
 		sym_nonbool_at_most_1(sym);
 	}
-
-// 	printf("done.\n");
 }
+
 
 /*
  * enforce tristate constraints
- * - X and X_MODULE are mutually exclusive
- * - X_MODULE implies the MODULES symbol
  */
 static void build_tristate_constraint_clause(struct symbol *sym)
 {
-	assert(sym->type == S_TRISTATE);
+	if (sym->type != S_TRISTATE)
+		return;
 
 	/* -X v -X_m */
-	struct fexpr *c = fexpr_or(fexpr_not(sym->fexpr_y), fexpr_not(sym->fexpr_m));
+	struct pexpr *X = pexf(sym->fexpr_y), *X_m = pexf(sym->fexpr_m), *modules = pexf(modules_sym->fexpr_y);
+
+	struct pexpr *c = pexpr_or(pexpr_not(X), pexpr_not(X_m));
 	sym_add_constraint(sym, c);
 
 	/* X_m -> MODULES */
-	// TODO doublecheck that
 	if (modules_sym->fexpr_y != NULL) {
-		struct fexpr *c2 = implies(sym->fexpr_m, modules_sym->fexpr_y);
+		struct pexpr *c2 = pexpr_implies(X_m, modules);
 		sym_add_constraint(sym, c2);
 	}
 }
@@ -240,16 +238,13 @@ static void build_tristate_constraint_clause(struct symbol *sym)
  */
 static void add_selects_kcr(struct symbol *sym)
 {
-	/* parse reverse dependency */
-	struct k_expr *ke = parse_expr(sym->rev_dep.expr, NULL);
+	struct pexpr *rdep_y = expr_calculate_pexpr_y(sym->rev_dep.expr);
+	struct pexpr *c1 = pexpr_implies(rdep_y, pexf(sym->fexpr_y));
+	sym_add_constraint(sym, c1);
 
-	struct fexpr *fe_y = calculate_fexpr_y(ke);
-	struct fexpr *sel_y = implies(fe_y, sym->fexpr_y);
-	sym_add_constraint(sym, sel_y);
-
-	struct fexpr *fe_both = calculate_fexpr_both(ke);
-	struct fexpr *sel_both = implies(fe_both, sym_get_fexpr_both(sym));
-	sym_add_constraint(sym, sel_both);
+	struct pexpr *rdep_both = expr_calculate_pexpr_both(sym->rev_dep.expr);
+	struct pexpr *c2 = pexpr_implies(rdep_both, sym_get_fexpr_both(sym));
+	sym_add_constraint(sym, c2);
 }
 
 /*
@@ -258,53 +253,56 @@ static void add_selects_kcr(struct symbol *sym)
  */
 static void add_selects(struct symbol *sym)
 {
-	assert(sym_is_boolean(sym));
+	if (!sym_is_boolean(sym))
+		return;
+
 	struct property *p;
 	for_all_properties(sym, p, P_SELECT) {
 		struct symbol *selected = p->expr->left.sym;
-				
-		if (selected->type == S_UNKNOWN) continue;
-		
-		assert(selected->rev_dep.expr);
-		
-		struct fexpr *cond_y = const_true;
-		struct fexpr *cond_both = const_true;
+
+		if (selected->type == S_UNKNOWN)
+			continue;
+
+		if (!selected->rev_dep.expr)
+			continue;
+
+		struct pexpr *cond_y = pexf(const_true);
+		struct pexpr *cond_both = pexf(const_true);
 		if (p->visible.expr) {
-			struct k_expr *ke = parse_expr(p->visible.expr, NULL);
-			cond_y = calculate_fexpr_y(ke);
-			cond_both = calculate_fexpr_both(ke);
+			cond_y = expr_calculate_pexpr_y(p->visible.expr);
+			cond_both = expr_calculate_pexpr_both(p->visible.expr);
 		}
-		
-		struct fexpr *e1 = implies(fexpr_and(cond_y, sym->fexpr_y), selected->fexpr_sel_y);
-        
-		convert_fexpr_to_nnf(e1);
+
+		struct pexpr *e1 = pexpr_implies(pexpr_and(cond_y, pexf(sym->fexpr_y)), pexf(selected->fexpr_sel_y));
+
 		sym_add_constraint(selected, e1);
-		
+
 		/* imply that symbol is selected to y */
 		if (selected->list_sel_y == NULL)
-			selected->list_sel_y = fexpr_and(cond_y, sym->fexpr_y);
+			selected->list_sel_y = pexpr_and(cond_y, pexf(sym->fexpr_y));
 		else
-			selected->list_sel_y = fexpr_or(selected->list_sel_y, fexpr_and(cond_y, sym->fexpr_y));
-			
-		assert(selected->list_sel_y != NULL);
-		
-		/* nothing more to do here */
-		if (sym->type == S_BOOLEAN && selected->type == S_BOOLEAN) continue;
-		
+			selected->list_sel_y = pexpr_or(selected->list_sel_y, pexpr_and(cond_y, pexf(sym->fexpr_y)));
 
-		struct fexpr *e2 = implies(fexpr_and(sym_get_fexpr_both(sym), cond_both), sym_get_fexpr_sel_both(selected));
-        
-		convert_fexpr_to_nnf(e2);
+		if (selected->list_sel_y == NULL)
+			continue;
+
+		/* nothing more to do here */
+		if (sym->type == S_BOOLEAN && selected->type == S_BOOLEAN)
+			continue;
+
+
+		struct pexpr *e2 = pexpr_implies(pexpr_and(cond_both, sym_get_fexpr_both(sym)), sym_get_fexpr_sel_both(selected));
+
 		sym_add_constraint(selected, e2);
-		
+
 		/* imply that symbol is selected */
 		if (selected->type == S_TRISTATE) {
 			if (selected->list_sel_m == NULL)
-				selected->list_sel_m = fexpr_and(cond_both, sym_get_fexpr_both(sym));
+				selected->list_sel_m = pexpr_and(cond_both, sym_get_fexpr_both(sym));
 			else
-				selected->list_sel_m = fexpr_or(selected->list_sel_m, fexpr_and(cond_both, sym_get_fexpr_both(sym)));
+				selected->list_sel_m = pexpr_or(selected->list_sel_m, pexpr_and(cond_both, sym_get_fexpr_both(sym)));
 		} else {
-			selected->list_sel_y = fexpr_or(selected->list_sel_y, fexpr_and(cond_both, sym_get_fexpr_both(sym)));
+			selected->list_sel_y = pexpr_or(selected->list_sel_y, pexpr_and(cond_both, sym_get_fexpr_both(sym)));
 		}
 	}
 }
@@ -315,31 +313,25 @@ static void add_selects(struct symbol *sym)
  */
 static void add_dependencies_bool(struct symbol *sym)
 {
-	assert(sym_is_boolean(sym));
-	assert(sym->dir_dep.expr);
-	
-	struct k_expr *ke_dirdep = parse_expr(sym->dir_dep.expr, NULL);
-	
-	struct fexpr *dep_both = calculate_fexpr_both(ke_dirdep);
-	
+	if (!sym_is_boolean(sym) || !sym->dir_dep.expr)
+		return;
+
+	struct pexpr *dep_both = expr_calculate_pexpr_both(sym->dir_dep.expr);
+
 	if (sym->type == S_TRISTATE) {
-		struct fexpr *dep_y = calculate_fexpr_y(ke_dirdep);
-		struct fexpr *sel_y = sym->rev_dep.expr ? sym->fexpr_sel_y : const_false;
-		
-		struct fexpr *fe_y = implies(sym->fexpr_y, fexpr_or(dep_y, sel_y));
-		
-		convert_fexpr_to_nnf(fe_y);
-		sym_add_constraint(sym, fe_y);
-		
-		struct fexpr *fe_both = implies(sym->fexpr_m, fexpr_or(dep_both, sym_get_fexpr_sel_both(sym)));
-		
-		convert_fexpr_to_nnf(fe_both);
-		sym_add_constraint(sym, fe_both);
+		struct pexpr *dep_y = expr_calculate_pexpr_y(sym->dir_dep.expr);
+		struct pexpr *sel_y = sym->rev_dep.expr ? pexf(sym->fexpr_sel_y) : pexf(const_false);
+
+		struct pexpr *c1 = pexpr_implies(pexf(sym->fexpr_y), pexpr_or(dep_y, sel_y));
+
+		sym_add_constraint(sym, c1);
+
+		struct pexpr *c2 = pexpr_implies(pexf(sym->fexpr_m), pexpr_or(dep_both, sym_get_fexpr_sel_both(sym)));
+
+		sym_add_constraint(sym, c2);
 	} else if (sym->type == S_BOOLEAN) {
-		
-		struct fexpr *fe_both = implies(sym->fexpr_y, fexpr_or(dep_both, sym_get_fexpr_sel_both(sym)));
-		convert_fexpr_to_nnf(fe_both);
-		sym_add_constraint(sym, fe_both);
+		struct pexpr *c = pexpr_implies(pexf(sym->fexpr_y), pexpr_or(dep_both, sym_get_fexpr_sel_both(sym)));
+		sym_add_constraint(sym, c);
 	}
 }
 
@@ -349,27 +341,24 @@ static void add_dependencies_bool(struct symbol *sym)
  */
 static void add_dependencies_bool_kcr(struct symbol *sym)
 {
-	assert(sym_is_boolean(sym));
-	assert(sym->dir_dep.expr);
-	
-	struct k_expr *ke_dirdep = parse_expr(sym->dir_dep.expr, NULL);
-	struct k_expr *ke_revdep = sym->rev_dep.expr ? parse_expr(sym->rev_dep.expr, NULL) : get_const_false_as_kexpr();
-	
-	struct fexpr *dep_both = calculate_fexpr_both(ke_dirdep);
-	struct fexpr *sel_both = sym->rev_dep.expr ? calculate_fexpr_both(ke_revdep) : const_false;
-	
+	if (!sym_is_boolean(sym) || !sym->dir_dep.expr)
+		return;
+
+	struct pexpr *dep_both = expr_calculate_pexpr_both(sym->dir_dep.expr);
+
+	struct pexpr *sel_both = sym->rev_dep.expr ? expr_calculate_pexpr_both(sym->rev_dep.expr) : pexf(const_false);
+
 	if (sym->type == S_TRISTATE) {
-		struct fexpr *dep_y = calculate_fexpr_y(ke_dirdep);
-		struct fexpr *sel_y = calculate_fexpr_y(ke_revdep);
-		struct fexpr *fe_y = implies(sym->fexpr_y, fexpr_or(dep_y, sel_y));
-		
-		sym_add_constraint(sym, fe_y);
-		
-		struct fexpr *fe_both = implies(sym->fexpr_m, fexpr_or(dep_both, sel_both));
-		sym_add_constraint(sym, fe_both);
+		struct pexpr *dep_y = expr_calculate_pexpr_y(sym->dir_dep.expr);
+		struct pexpr *sel_y = sym->rev_dep.expr ? expr_calculate_pexpr_y(sym->rev_dep.expr) : pexf(const_false);
+		struct pexpr *c1 = pexpr_implies(pexf(sym->fexpr_y), pexpr_or(dep_y, sel_y));
+		sym_add_constraint(sym, c1);
+
+		struct pexpr *c2 = pexpr_implies(pexf(sym->fexpr_m), pexpr_or(dep_both, sel_both));
+		sym_add_constraint(sym, c2);
 	} else if (sym->type == S_BOOLEAN) {
-		struct fexpr *fe_both = implies(sym->fexpr_y, fexpr_or(dep_both, sel_both));
-		sym_add_constraint(sym, fe_both);
+		struct pexpr *c = pexpr_implies(pexf(sym->fexpr_y), pexpr_or(dep_both, sel_both));
+		sym_add_constraint(sym, c);
 	}
 }
 
@@ -379,57 +368,47 @@ static void add_dependencies_bool_kcr(struct symbol *sym)
  */
 static void add_dependencies_nonbool(struct symbol *sym)
 {
-	assert(sym_is_nonboolean(sym));
-	assert(sym->dir_dep.expr);
-	
-	struct k_expr *ke_dirdep = parse_expr(sym->dir_dep.expr, NULL);
-	struct k_expr *ke_revdep = sym->rev_dep.expr ? parse_expr(sym->rev_dep.expr, NULL) : get_const_false_as_kexpr();
-	
-	struct fexpr *dep_both = calculate_fexpr_both(ke_dirdep);
-	struct fexpr *sel_both = sym->rev_dep.expr ? calculate_fexpr_both(ke_revdep) : const_false;
-	
-	// TODO check
-	if (sel_both != const_false)
-		perror("Non-boolean symbol has reverse dependencies.");
+	if (!sym_is_nonboolean(sym) || !sym->dir_dep.expr || sym->rev_dep.expr)
+		return;
 
-	struct fexpr *nb_vals = const_false;
-	unsigned int i;
+	struct pexpr *dep_both = expr_calculate_pexpr_both(sym->dir_dep.expr);
+
+	struct pexpr *nb_vals = pexf(const_false);
+	struct fexpr_node *node;
 	/* can skip the first non-boolean value, since this is 'n' */
-	for (i = 1; i < sym->fexpr_nonbool->arr->len; i++) {
-		nb_vals = fexpr_or(nb_vals, g_array_index(sym->fexpr_nonbool->arr, struct fexpr *, i));
+	fexpr_list_for_each(node, sym->nb_vals) {
+		if (node->prev == NULL)
+			continue;
+
+		nb_vals = pexpr_or(nb_vals, pexf(node->elem));
 	}
 
-	struct fexpr *fe_both = implies(nb_vals, fexpr_or(dep_both, sel_both));
-	
-	convert_fexpr_to_nnf(fe_both);
-	sym_add_constraint(sym, fe_both);
+	struct pexpr *c = pexpr_implies(nb_vals, dep_both);
+	sym_add_constraint(sym, c);
 }
-
 
 /*
  * build the constraints for the choice prompt
  */
 static void add_choice_prompt_cond(struct symbol* sym)
 {
-	assert(sym_is_boolean(sym));
-	
+	if (!sym_is_boolean(sym))
+		return;
+
 	struct property *prompt = sym_get_prompt(sym);
-	assert(prompt);
-	
-	struct k_expr *ke = prompt->visible.expr ? parse_expr(prompt->visible.expr, NULL) : get_const_true_as_kexpr();
-	struct fexpr *promptCondition = calculate_fexpr_both(ke);
-	
-	struct fexpr *fe_both = sym_get_fexpr_both(sym);
-	
+	if (prompt == NULL)
+		return;
+
+	struct pexpr *promptCondition = prompt->visible.expr ? expr_calculate_pexpr_both(prompt->visible.expr) : pexf(const_true);
+
+	struct pexpr *fe_both = sym_get_fexpr_both(sym);
+
 	if (!sym_is_optional(sym)) {
-		struct fexpr *req_cond = implies(promptCondition, fe_both);
-		convert_fexpr_to_nnf(req_cond);
+		struct pexpr *req_cond = pexpr_implies(promptCondition, fe_both);
 		sym_add_constraint(sym, req_cond);
 	}
-	
-	struct fexpr *pr_cond = implies(fe_both, promptCondition);
-	
-	convert_fexpr_to_nnf(pr_cond);
+
+	struct pexpr *pr_cond = pexpr_implies(fe_both, promptCondition);
 	sym_add_constraint(sym, pr_cond);
 }
 
@@ -438,136 +417,140 @@ static void add_choice_prompt_cond(struct symbol* sym)
  */
 static void add_choice_dependencies(struct symbol *sym)
 {
-	assert(sym_is_choice(sym) || sym_is_choice_value(sym));
-	
+	if (!sym_is_choice(sym) || !sym_is_choice_value(sym))
+		return;
+
 	struct property *prompt = sym_get_prompt(sym);
-	assert(prompt);
-	
-	struct k_expr *ke_dirdep;
+	if (prompt == NULL)
+		return;
+
+	struct expr *to_parse;
 	if (sym_is_choice(sym)) {
-		if (!sym->rev_dep.expr)
+		if (!prompt->visible.expr)
 			return;
-		ke_dirdep = parse_expr(sym->rev_dep.expr, NULL);
+		to_parse = prompt->visible.expr;
 	} else {
 		if (!sym->dir_dep.expr)
 			return;
-		ke_dirdep = parse_expr(sym->dir_dep.expr, NULL);
+		to_parse = sym->dir_dep.expr;
 	}
 
-	struct fexpr *dep_both = calculate_fexpr_both(ke_dirdep);
-	
+	struct pexpr *dep_both = expr_calculate_pexpr_both(to_parse);
+
 	if (sym->type == S_TRISTATE) {
-		struct fexpr *dep_y = calculate_fexpr_y(ke_dirdep);
-		struct fexpr *fe_y = implies(sym->fexpr_y, dep_y);
-		convert_fexpr_to_nnf(fe_y);
-		sym_add_constraint(sym, fe_y);
-		
-		struct fexpr *fe_both = implies(sym->fexpr_m, dep_both);
-		convert_fexpr_to_nnf(fe_both);
-		sym_add_constraint(sym, fe_both);
+		struct pexpr *dep_y = expr_calculate_pexpr_y(to_parse);
+		struct pexpr *c1 = pexpr_implies(pexf(sym->fexpr_y), dep_y);
+		sym_add_constraint_eq(sym, c1);
+
+		struct pexpr *c2 = pexpr_implies(pexf(sym->fexpr_m), dep_both);
+		sym_add_constraint_eq(sym, c2);
 	} else if (sym->type == S_BOOLEAN) {
-		struct fexpr *fe_both = implies(sym->fexpr_y, dep_both);
-		convert_fexpr_to_nnf(fe_both);
-		sym_add_constraint(sym, fe_both);
+		struct pexpr *c = pexpr_implies(pexf(sym->fexpr_y), dep_both);
+		sym_add_constraint_eq(sym, c);
 	}
 }
-
 
 /*
  * build constraints for the choice groups
  */
 static void add_choice_constraints(struct symbol *sym)
 {
-	assert(sym_is_boolean(sym));
-	
+	if (!sym_is_boolean(sym))
+		return;
+
 	struct property *prompt = sym_get_prompt(sym);
-	assert(prompt);
-	
-	unsigned int i, j;
+	if (prompt == NULL)
+		return;
+
 	struct symbol *choice, *choice2;
-	
+	struct sym_node *node, *node2;
+
 	/* create list of all choice options */
-	GArray *items = g_array_new(false, false, sizeof(struct symbol *));
+	struct sym_list *items = sym_list_init();
 	/* create list of choice options with a prompt */
-	GArray *promptItems = g_array_new(false, false, sizeof(struct symbol *));
-	
+	struct sym_list *promptItems = sym_list_init();
+
 	struct property *prop;
 	for_all_choices(sym, prop) {
 		struct expr *expr;
 		expr_list_for_each_sym(prop->expr, expr, choice) {
-			g_array_append_val(items, choice);
+			sym_list_add(items, choice);
 			if (sym_get_prompt(choice) != NULL)
-				g_array_append_val(promptItems, choice);
+				sym_list_add(promptItems, choice);
 		}
 	}
-	
+
 	/* if the choice is set to yes, at least one child must be set to yes */
-	struct fexpr *c1 = NULL;
-	for (i = 0; i < promptItems->len; i++) {
-		choice = g_array_index(promptItems, struct symbol *, i);
-		c1 = i == 0 ? choice->fexpr_y : fexpr_or(c1, choice->fexpr_y);
+	struct pexpr *c1 = NULL;
+	sym_list_for_each(node, promptItems) {
+		choice = node->elem;
+		c1 = node->prev == NULL ? pexf(choice->fexpr_y) : pexpr_or(c1, pexf(choice->fexpr_y));
 	}
-	if (c1 != NULL)
-		sym_add_constraint(sym, implies(sym->fexpr_y, c1));
-	
+	if (c1 != NULL) {
+		struct pexpr *c2 = pexpr_implies(pexf(sym->fexpr_y), c1);
+		sym_add_constraint(sym, c2);
+	}
+
 	/* every choice option (even those without a prompt) implies the choice */
-	for (i = 0; i < items->len; i++) {
-		choice = g_array_index(items, struct symbol *, i);
-		c1 = implies(sym_get_fexpr_both(choice), sym_get_fexpr_both(sym));
+	sym_list_for_each(node, items) {
+		choice = node->elem;
+		c1 = pexpr_implies(sym_get_fexpr_both(choice), sym_get_fexpr_both(sym));
 		sym_add_constraint(sym, c1);
 	}
 
 	/* choice options can only select mod, if the entire choice is mod */
 	if (sym->type == S_TRISTATE) {
-		for (i = 0; i < items->len; i++) {
-			choice = g_array_index(items, struct symbol *, i);
+		sym_list_for_each(node, items) {
+			choice = node->elem;
 			if (choice->type == S_TRISTATE) {
-				c1 = implies(choice->fexpr_m, sym->fexpr_m);
+				c1 = pexpr_implies(pexf(choice->fexpr_m), pexf(sym->fexpr_m));
 				sym_add_constraint(sym, c1);
 			}
 		}
 	}
-	
+
 	/* tristate options cannot be m, if the choice symbol is boolean */
 	if (sym->type == S_BOOLEAN) {
-		for (i = 0; i < items->len; i++) {
-			choice = g_array_index(items, struct symbol *, i);
+		sym_list_for_each(node, items) {
+			choice = node->elem;
 			if (choice->type == S_TRISTATE)
-				sym_add_constraint(sym, fexpr_not(choice->fexpr_m));
+				sym_add_constraint(sym, pexpr_not(pexf(choice->fexpr_m)));
 		}
 	}
-	
+
 	/* all choice options are mutually exclusive for yes */
-	for (i = 0; i < promptItems->len; i++) {
-		choice = g_array_index(promptItems, struct symbol *, i);
-		for (j = i + 1; j < promptItems->len; j++) {
-			choice2 = g_array_index(promptItems, struct symbol *, j);
-			c1 = fexpr_or(fexpr_not(choice->fexpr_y), fexpr_not(choice2->fexpr_y));
+	sym_list_for_each(node, promptItems) {
+		choice = node->elem;
+		for (node2 = node->next; node2 != NULL; node2 = node2->next) {
+			choice2 = node2->elem;
+			c1 = pexpr_or(pexpr_not(pexf(choice->fexpr_y)), pexpr_not(pexf(choice2->fexpr_y)));
 			sym_add_constraint(sym, c1);
 		}
 	}
-	
+
 	/* if one choice option with a prompt is set to yes,
 	 * then no other option may be set to mod */
 	if (sym->type == S_TRISTATE) {
-		for (i = 0; i < promptItems->len; i++) {
-			choice = g_array_index(promptItems, struct symbol *, i);
-		
-			GArray *tmp_arr = g_array_new(false, false, sizeof(struct symbol *));
-			for (j = 0; j < promptItems->len; j++) {
-				choice2 = g_array_index(promptItems, struct symbol *, j);
+		sym_list_for_each(node, promptItems) {
+			choice = node->elem;
+
+			struct sym_list *tmp = sym_list_init();
+			for (node2 = node->next; node2 != NULL; node2 = node2->next) {
+				choice2 = node2->elem;
 				if (choice2->type == S_TRISTATE)
-					g_array_append_val(tmp_arr, choice2);
+					sym_list_add(tmp, choice2);
 			}
-			if (tmp_arr->len == 0) continue;
-			
-			for (j = 0; j < tmp_arr->len; j++) {
-				choice2 = g_array_index(tmp_arr, struct symbol *, j);
-				c1 = j == 0 ? fexpr_not(choice2->fexpr_m) : fexpr_and(c1, fexpr_not(choice2->fexpr_m));
+			if (tmp->size == 0) continue;
+
+			sym_list_for_each(node2, tmp) {
+				choice2 = node2->elem;
+				if (node2->prev == NULL)
+					c1 = pexpr_not(pexf(choice2->fexpr_m));
+				else
+					c1 = pexpr_and(c1, pexpr_not(pexf(choice2->fexpr_m)));
 			}
-			c1 = implies(choice->fexpr_y, c1);
+			c1 = pexpr_implies(pexf(choice->fexpr_y), c1);
 			sym_add_constraint(sym, c1);
-			
 		}
 	}
 }
@@ -575,57 +558,83 @@ static void add_choice_constraints(struct symbol *sym)
 /*
  * build the constraints for invisible options such as defaults
  */
-static void add_invisible_constraints(struct symbol *sym, struct property *prompt)
+static void add_invisible_constraints(struct symbol *sym)
 {
-	assert(prompt);
-	
-	struct k_expr *ke_promptCond = parse_expr(prompt->visible.expr, NULL);
-	struct fexpr *promptCondition_both = calculate_fexpr_both(ke_promptCond);
-	struct fexpr *promptCondition_yes = calculate_fexpr_y(ke_promptCond);
-	struct fexpr *nopromptCond = fexpr_not(promptCondition_both);
-	
-	GArray *defaults = get_defaults(sym);
-	struct fexpr *default_y = get_default_y(defaults);
-	struct fexpr *default_m = get_default_m(defaults);
-	struct fexpr *default_both = fexpr_or(default_y, default_m);
-	
+	struct property *prompt = sym_get_prompt(sym);
+
+	/* no prompt conditions, nothing to do here */
+	if (prompt != NULL && !prompt->visible.expr)
+		return;
+
+	struct pexpr *promptCondition_both, *promptCondition_yes, *noPromptCond;
+	if (prompt == NULL) {
+		promptCondition_both = pexf(const_false);
+		promptCondition_yes = pexf(const_false);
+		noPromptCond = pexf(const_true);
+	} else {
+		promptCondition_both = expr_calculate_pexpr_both(prompt->visible.expr);
+		promptCondition_yes = expr_calculate_pexpr_y(prompt->visible.expr);
+		noPromptCond = pexpr_not(promptCondition_both);
+	}
+
+	struct pexpr *npc;
+	if (NPC_OPTIMISATION) {
+		struct fexpr * npc_fe = fexpr_create(sat_variable_nr++, FE_NPC, "");
+		if (sym_is_choice(sym))
+			str_append(&npc_fe->name, "Choice_");
+
+		str_append(&npc_fe->name, sym_get_name(sym));
+		str_append(&npc_fe->name, "_NPC");
+		sym->noPromptCond = npc_fe;
+		fexpr_add_to_satmap(npc_fe);
+
+		npc = pexf(npc_fe);
+
+		struct pexpr *c = pexpr_implies(noPromptCond, npc);
+
+		if (!sym_is_choice_value(sym) && !sym_is_choice(sym))
+			sym_add_constraint(sym, c);
+	} else {
+		npc = noPromptCond;
+	}
+
+	struct defm_list *defaults = get_defaults(sym);
+	struct pexpr *default_y = get_default_y(defaults);
+	struct pexpr *default_m = get_default_m(defaults);
+	struct pexpr *default_both = pexpr_or(default_y, default_m);
+
 	/* tristate elements are only selectable as yes, if they are visible as yes */
 	if (sym->type == S_TRISTATE) {
-		struct fexpr *e1 = implies(promptCondition_both, implies(sym->fexpr_y, promptCondition_yes));
-		
-		convert_fexpr_to_nnf(e1);
+		struct pexpr *e1 = pexpr_implies(promptCondition_both, pexpr_implies(pexf(sym->fexpr_y), promptCondition_yes));
 		sym_add_constraint(sym, e1);
 	}
 
 	/* if invisible and off by default, then a symbol can only be deactivated by its reverse dependencies */
 	if (sym->type == S_TRISTATE) {
-		struct fexpr *sel_y, *sel_m, *sel_both;
+		struct pexpr *sel_y, *sel_m, *sel_both;
 		if (sym->fexpr_sel_y != NULL) {
-			sel_y = implies(sym->fexpr_y, sym->fexpr_sel_y);
-			sel_m = implies(sym->fexpr_m, fexpr_or(sym->fexpr_sel_y, sym->fexpr_sel_m));
-			sel_both = implies(sym->fexpr_y, fexpr_or(sym->fexpr_sel_y, sym->fexpr_sel_m));
+			sel_y = pexpr_implies(pexf(sym->fexpr_y), pexf(sym->fexpr_sel_y));
+			sel_m = pexpr_implies(pexf(sym->fexpr_m), pexf(sym->fexpr_sel_m));
+			sel_both = pexpr_implies(pexf(sym->fexpr_y), pexpr_or(pexf(sym->fexpr_sel_m), pexf(sym->fexpr_sel_y)));
 		} else {
-			sel_y = fexpr_not(sym->fexpr_y);
-			sel_m = fexpr_not(sym->fexpr_m);
-			sel_both = fexpr_not(sym->fexpr_y);
+			sel_y = pexpr_not(pexf(sym->fexpr_y));
+			sel_m = pexpr_not(pexf(sym->fexpr_m));
+			sel_both = sel_y;
 		}
-		
-		struct fexpr *c1 = implies(fexpr_not(default_y), sel_y);
-		struct fexpr *c2 = implies(modules_sym->fexpr_y, c1);
-		struct fexpr *c3 = implies(nopromptCond, c2);
-		convert_fexpr_to_nnf(c3);
+
+		struct pexpr *c1 = pexpr_implies(pexpr_not(default_y), sel_y);
+		struct pexpr *c2 = pexpr_implies(pexf(modules_sym->fexpr_y), c1);
+		struct pexpr *c3 = pexpr_implies(npc, c2);
 		sym_add_constraint(sym, c3);
 
-		struct fexpr *d1 = implies(fexpr_not(default_m), sel_m);
-		struct fexpr *d2 = implies(modules_sym->fexpr_y, d1);
-		struct fexpr *d3 = implies(nopromptCond, d2);
-		convert_fexpr_to_nnf(d3);
+		struct pexpr *d1 = pexpr_implies(pexpr_not(default_m), sel_m);
+		struct pexpr *d2 = pexpr_implies(pexf(modules_sym->fexpr_y), d1);
+		struct pexpr *d3 = pexpr_implies(npc, d2);
 		sym_add_constraint(sym, d3);
 
-		struct fexpr *e1 = implies(fexpr_not(default_both), sel_both);
-		struct fexpr *e2 = implies(fexpr_not(modules_sym->fexpr_y), e1);
-		struct fexpr *e3 = implies(nopromptCond, e2);
-		convert_fexpr_to_nnf(e3);
+		struct pexpr *e1 = pexpr_implies(pexpr_not(default_both), sel_both);
+		struct pexpr *e2 = pexpr_implies(pexpr_not(pexf(modules_sym->fexpr_y)), e1);
+		struct pexpr *e3 = pexpr_implies(npc, e2);
 		sym_add_constraint(sym, e3);
 	} else if (sym->type == S_BOOLEAN) {
 		/* somewhat dirty hack since the symbol is defined twice.
@@ -633,64 +642,92 @@ static void add_invisible_constraints(struct symbol *sym, struct property *promp
 		 * needs to be revisited.
 		 * TODO: fix it.
 		 */
-		if (sym->name && strcmp(sym->name, "X86_EXTENDED_PLATFORM") == 0) goto SKIP_PREV_CONSTRAINT;
-		
-		struct fexpr *sel_y;
+		if (sym->name && strcmp(sym->name, "X86_EXTENDED_PLATFORM") == 0)
+			goto SKIP_PREV_CONSTRAINT;
+
+		struct pexpr *sel_y;
 		if (sym->fexpr_sel_y != NULL)
-			sel_y = implies(sym->fexpr_y, sym->fexpr_sel_y); //sym->fexpr_sel_y;
+			sel_y = pexpr_implies(pexf(sym->fexpr_y), pexf(sym->fexpr_sel_y)); //sym->fexpr_sel_y;
 		else
-			sel_y = fexpr_not(sym->fexpr_y);
-		
-		struct fexpr *e1 = implies(fexpr_not(default_both), sel_y);
-		struct fexpr *e2 = implies(nopromptCond, e1);
-		
-		convert_fexpr_to_nnf(e2);
-		sym_add_constraint(sym, e2);
+			sel_y = pexpr_not(pexf(sym->fexpr_y));
+
+		struct pexpr *e1 = pexpr_implies(pexpr_not(default_both), sel_y);
+		struct pexpr *e2 = pexpr_implies(npc, e1);
+
+		sym_add_constraint_eq(sym, e2);
 	} else {
-		// TODO for non-booleans
+		struct pexpr *default_any = get_default_any(sym);
+		struct pexpr *e1 = pexf(const_true);
+		struct fexpr_node *node;
+		for (node = sym->nb_vals->head->next; node != NULL; node = node->next)
+			e1 = pexpr_and(e1, pexpr_not(pexf(node->elem)));
+
+		struct pexpr *e2 = pexpr_implies(pexpr_not(default_any), e1);
+
+		struct pexpr *e3 = pexpr_implies(npc, e2);
+
+		// TODO
+		sym_add_constraint(sym, e3);
 	}
-	
+
 SKIP_PREV_CONSTRAINT:
 
 	/* if invisible and on by default, then a symbol can only be deactivated by its dependencies */
 	if (sym->type == S_TRISTATE) {
-		if (defaults->len == 0) return;
-		
-		struct fexpr *e1 = implies(nopromptCond, implies(default_y, sym->fexpr_y));
-		convert_fexpr_to_nnf(e1);
+		if (defaults->size == 0)
+			return;
+
+		struct pexpr *e1 = pexpr_implies(npc, pexpr_implies(default_y, pexf(sym->fexpr_y)));
 		sym_add_constraint(sym, e1);
-		
-		struct fexpr *e2 = implies(nopromptCond, implies(default_m, sym_get_fexpr_both(sym)));
-		convert_fexpr_to_nnf(e2);
+
+		struct pexpr *e2 = pexpr_implies(npc, pexpr_implies(default_m, sym_get_fexpr_both(sym)));
 		sym_add_constraint(sym, e2);
 	} else if (sym->type == S_BOOLEAN) {
-		if (defaults->len == 0) return;
-		
-		struct fexpr *c = implies(default_both, sym->fexpr_y);
-		
+		if (defaults->size == 0)
+			return;
+
+		struct pexpr *c = pexpr_implies(default_both, pexf(sym->fexpr_y));
+
 		// TODO tristate choice hack
-		
-		struct fexpr *c2 = implies(nopromptCond, c);
-		convert_fexpr_to_nnf(c2);
+
+		struct pexpr *c2 = pexpr_implies(npc, c);
 		sym_add_constraint(sym, c2);
 	} else {
-		// TODO for non-booleans
+		struct defm_node *node;
+		struct pexpr *cond, *c;
+		struct fexpr *f;
+		defm_list_for_each(node, defaults) {
+			f = node->elem->val;
+			cond = node->elem->e;
+			c = pexpr_implies(npc, pexpr_implies(cond, pexf(f)));
+			// TODO
+			sym_add_constraint(sym, c);
+		}
 	}
-
 }
 
 /*
- * add the known values from the range-attributes
+ * add the known values from the default and range properties
  */
-static void sym_add_nonbool_values_from_ranges(struct symbol *sym)
+static void sym_add_nonbool_values_from_default_range(struct symbol *sym)
 {
-	struct property *prop;
-	for_all_properties(sym, prop, P_RANGE) {
-		assert(prop != NULL);
-		
+	struct property *p;
+
+	for_all_defaults(sym, p) {
+		if (p == NULL)
+			continue;
+
+		/* add the value to known values, if it doesn't exist yet */
+		sym_create_nonbool_fexpr(sym, p->expr->left.sym->name);
+	}
+
+	for_all_properties(sym, p, P_RANGE) {
+		if (p == NULL)
+			continue;
+
 		/* add the values to known values, if they don't exist yet */
-		sym_create_nonbool_fexpr(sym, prop->expr->left.sym->name);
-		sym_create_nonbool_fexpr(sym, prop->expr->right.sym->name);
+		sym_create_nonbool_fexpr(sym, p->expr->left.sym->name);
+		sym_create_nonbool_fexpr(sym, p->expr->right.sym->name);
 	}
 }
 
@@ -700,29 +737,29 @@ static void sym_add_nonbool_values_from_ranges(struct symbol *sym)
 static void sym_add_range_constraints(struct symbol *sym)
 {
 	struct property *prop;
-	struct fexpr *prevs, *propCond, *e;
-	unsigned int i;
-	GArray *prevCond = g_array_new(false, false, sizeof(struct fexpr *));
+	struct pexpr *prevs, *propCond;
+	struct pexpr_list *prevCond = pexpr_list_init();
 	for_all_properties(sym, prop, P_RANGE) {
-		assert(prop != NULL);
-		
-		prevs = const_true;
+		if (prop == NULL)
+			continue;
+
+		prevs = pexf(const_true);
 		propCond = prop_get_condition(prop);
 
-		if (prevCond->len == 0) {
+		if (prevCond->size == 0) {
 			prevs = propCond;
 		} else {
-			for (i = 0; i < prevCond->len; i++) {
-				e = g_array_index(prevCond, struct fexpr *, i);
-				prevs = fexpr_and(fexpr_not(e), prevs);
-			}
-			prevs = fexpr_and(propCond, prevs);
+			struct pexpr_node *node;
+			pexpr_list_for_each(node, prevCond)
+				prevs = pexpr_and(pexpr_not(node->elem), prevs);
+
+			prevs = pexpr_and(propCond, prevs);
 		}
-		g_array_append_val(prevCond, propCond);
+		pexpr_list_add(prevCond, propCond);
 
 		int base;
 		long long range_min, range_max, tmp;
-		
+
 		switch (sym->type) {
 		case S_INT:
 			base = 10;
@@ -733,28 +770,30 @@ static void sym_add_range_constraints(struct symbol *sym)
 		default:
 			return;
 		}
-		
+
 		range_min = sym_get_range_val(prop->expr->left.sym, base);
 		range_max = sym_get_range_val(prop->expr->right.sym, base);
-		
-		struct fexpr *nb_val;
-		unsigned int i;
+
 		/* can skip the first non-boolean value, since this is 'n' */
-		for (i = 1; i < sym->fexpr_nonbool->arr->len; i++) {
-			nb_val = g_array_index(sym->fexpr_nonbool->arr, struct fexpr *, i);
-			tmp = strtoll(str_get(&nb_val->nb_val), NULL, base);
-			
+		struct fexpr_node *node;
+		fexpr_list_for_each(node, sym->nb_vals) {
+			if (node->prev == NULL)
+				continue;
+
+			tmp = strtoll(str_get(&node->elem->nb_val), NULL, base);
+
 			/* known value is in range, nothing to do here */
-			if (tmp >= range_min && tmp <= range_max) continue;
-			
-			struct fexpr *not_nb_val = fexpr_not(nb_val);
+			if (tmp >= range_min && tmp <= range_max)
+				continue;
+
+			struct pexpr *not_nb_val = pexpr_not(pexf(node->elem));
 			if (tmp < range_min) {
-				struct fexpr *c = implies(prevs, not_nb_val);
+				struct pexpr *c = pexpr_implies(prevs, not_nb_val);
 				sym_add_constraint(sym, c);
 			}
-			
+
 			if (tmp > range_max) {
-				struct fexpr *c = implies(prevs, not_nb_val);
+				struct pexpr *c = pexpr_implies(prevs, not_nb_val);
 				sym_add_constraint(sym, c);
 			}
 		}
@@ -766,16 +805,16 @@ static void sym_add_range_constraints(struct symbol *sym)
  */
 static void sym_nonbool_at_least_1(struct symbol *sym)
 {
-	assert(sym_is_nonboolean(sym));
-	
-	struct fexpr *e = NULL;
-	unsigned int i;
-	for (i = 0; i < sym->fexpr_nonbool->arr->len; i++) {
-		if (i == 0)
-			e = g_array_index(sym->fexpr_nonbool->arr, struct fexpr *, i);
-		else 
-			e = fexpr_or(e, g_array_index(sym->fexpr_nonbool->arr, struct fexpr *, i));
-		
+	if (!sym_is_nonboolean(sym))
+		return;
+
+	struct pexpr *e = NULL;
+	struct fexpr_node *node;
+	fexpr_list_for_each(node, sym->nb_vals) {
+		if (node->prev == NULL)
+			e = pexf(node->elem);
+		else
+			e = pexpr_or(e, pexf(node->elem));
 	}
 	sym_add_constraint(sym, e);
 }
@@ -785,15 +824,16 @@ static void sym_nonbool_at_least_1(struct symbol *sym)
  */
 static void sym_nonbool_at_most_1(struct symbol *sym)
 {
-	assert(sym_is_nonboolean(sym));
-	
-	struct fexpr *e1, *e2;
-	unsigned int i, j;
-	for (i = 0; i < sym->fexpr_nonbool->arr->len; i++) {
-		e1 = g_array_index(sym->fexpr_nonbool->arr, struct fexpr *, i);
-		for (j = i + 1; j < sym->fexpr_nonbool->arr->len; j++) {
-			e2 = g_array_index(sym->fexpr_nonbool->arr, struct fexpr *, j);
-			struct fexpr *e = fexpr_or(fexpr_not(e1), fexpr_not(e2));
+	if (!sym_is_nonboolean(sym))
+		return;
+
+	struct pexpr *e1, *e2;
+	struct fexpr_node *node1, *node2;
+	fexpr_list_for_each(node1, sym->nb_vals) {
+		e1 = pexf(node1->elem);
+		for (node2 = node1->next; node2 != NULL; node2 = node2->next) {
+			e2 = pexf(node2->elem);
+			struct pexpr *e = pexpr_or(pexpr_not(e1), pexpr_not(e2));
 			sym_add_constraint(sym, e);
 		}
 	}
@@ -805,193 +845,266 @@ static void sym_nonbool_at_most_1(struct symbol *sym)
 static void sym_add_nonbool_prompt_constraint(struct symbol *sym)
 {
 	struct property *prompt = sym_get_prompt(sym);
-	if (prompt == NULL) return;
-	
-	struct fexpr *promptCondition = prop_get_condition(prompt);
-	struct fexpr *n = sym_get_nonbool_fexpr(sym, "n");
-	assert(n != NULL);
-	struct fexpr *c = implies(promptCondition, fexpr_not(n));
-	
+	if (prompt == NULL)
+		return;
+
+	struct pexpr *promptCondition = prop_get_condition(prompt);
+	struct pexpr *n = pexf(sym_get_nonbool_fexpr(sym, "n"));
+
+	if (n->type != PE_SYMBOL)
+		return;
+	if (n->left.fexpr == NULL)
+		return;
+
+	struct pexpr *c = pexpr_implies(promptCondition, pexpr_not(n));
+
 	sym_add_constraint(sym, c);
 }
 
-
-static struct default_map * create_default_map_entry(struct fexpr *val, struct fexpr *e)
+static struct default_map * create_default_map_entry(struct fexpr *val, struct pexpr *e)
 {
 	struct default_map *map = malloc(sizeof(struct default_map));
 	map->val = val;
 	map->e = e;
-	
+
 	return map;
 }
 
-static struct fexpr * findDefaultEntry(struct fexpr *val, GArray *defaults)
+static struct pexpr * findDefaultEntry(struct fexpr *val, struct defm_list *defaults)
 {
-	unsigned int i;
-	struct default_map *entry;
-	for (i = 0; i < defaults->len; i++) {
-		entry = g_array_index(defaults, struct default_map *, i);
-		if (val == entry->val)
-			return entry->e;
-	}
-	
-	return const_false;
+	struct defm_node *node;
+	defm_list_for_each(node, defaults)
+		if (val == node->elem->val)
+			return node->elem->e;
+
+	return pexf(const_false);
 }
 
 /* add a default value to the list */
-static struct fexpr *covered;
-static void updateDefaultList(struct fexpr *val, struct fexpr *newCond, GArray *defaults)
-{
-	struct fexpr *prevCond = findDefaultEntry(val, defaults);
-	struct fexpr *cond = fexpr_or(prevCond, fexpr_and(newCond, fexpr_not(covered)));
-	struct default_map *entry = create_default_map_entry(val, cond);
-	g_array_append_val(defaults, entry);
-	covered = fexpr_or(covered, newCond);
-}
 
 /*
  * return all defaults for a symbol
  */
-static GArray * get_defaults(struct symbol *sym)
+static struct pexpr *covered;
+static bool is_nonbool_constant(struct property *p)
 {
-	struct property *p;
-// 	struct default_map *map;
-	GArray *defaults = g_array_new(false, false, sizeof(struct default_map *));
-	covered = const_false;
-	
-	struct k_expr *ke_expr;
-	struct fexpr *expr_yes;
-	struct fexpr *expr_mod;
-	struct fexpr *expr_both;
-	
-	for_all_defaults(sym, p) {
-		ke_expr = p->visible.expr ? parse_expr(p->visible.expr, NULL) : get_const_true_as_kexpr();
-		expr_yes = calculate_fexpr_y(ke_expr);
-		expr_mod = calculate_fexpr_m(ke_expr);
-		expr_both = calculate_fexpr_both(ke_expr);
-		
-		struct k_expr *ke_v = parse_expr(p->expr, NULL);
+	if (p->expr->type != E_SYMBOL)
+		return false;
+	if (p->expr->left.sym->type != S_UNKNOWN)
+		return false;
 
-// 		print_expr("v/expr:", p->expr, E_NONE);
-// 		printf("type: %d\n", p->expr->type);
-		
-		
-// 		assert(p->visible.expr);
-// 		print_expr("expr/visible.expr:", p->visible.expr, E_NONE);
-// 		assert(p->visible.expr);
-		
+	if (p->expr->left.sym->flags & SYMBOL_CONST)
+		return true;
+
+	char *name = p->expr->left.sym->name;
+
+	return string_is_number(name) || string_is_hex(name);
+}
+static bool is_tri_as_num(struct symbol *sym) {
+	if (!sym->name)
+		return false;
+
+	return !strcmp(sym->name, "0") ||
+		!strcmp(sym->name, "1") ||
+		!strcmp(sym->name, "2");
+}
+static void add_to_default_map(struct defm_list *defaults, struct default_map *entry, struct symbol *sym)
+{
+	/* as this is a map, the entry must be replaced if it already exists */
+	if (sym_is_boolean(sym)) {
+		struct default_map *map;
+		struct defm_node *node;
+		defm_list_for_each(node, defaults) {
+			map = node->elem;
+			if (map->val->sym == entry->val->sym) {
+				map->e = entry->e;
+				return;
+			}
+		}
+		defm_list_add(defaults, entry);
+	} else {
+		struct default_map *map;
+		struct defm_node *node;
+		defm_list_for_each(node, defaults) {
+			map = node->elem;
+			if (map->val->satval == entry->val->satval) {
+				map->e = entry->e;
+				return;
+			}
+		}
+		defm_list_add(defaults, entry);
+	}
+}
+static void updateDefaultList(struct fexpr *val, struct pexpr *newCond, struct defm_list *result, struct symbol *sym)
+{
+	struct pexpr *prevCond = findDefaultEntry(val, result);
+	struct pexpr *cond = pexpr_or(prevCond, pexpr_and(newCond, pexpr_not(covered)));
+	struct default_map *entry = create_default_map_entry(val, cond);
+	add_to_default_map(result, entry, sym);
+	covered = pexpr_or(covered, newCond);
+}
+static void add_defaults(struct prop_list *defaults, struct expr *ctx, struct defm_list *result, struct symbol *sym)
+{
+	struct prop_node *node;
+	struct property *p;
+	struct expr *expr;
+
+	prop_list_for_each(node, defaults) {
+		p = node->elem;
+		if (p->visible.expr) {
+			if (ctx == NULL)
+				expr = p->visible.expr;
+			else
+				expr = expr_alloc_and(p->visible.expr, ctx);
+		} else {
+			if (ctx == NULL)
+				expr = expr_alloc_symbol(&symbol_yes);
+			else
+				expr = expr_alloc_and(expr_alloc_symbol(&symbol_yes), ctx);
+		}
+
 		/* if tristate and def.value = y */
 		if (p->expr->type == E_SYMBOL && sym->type == S_TRISTATE && p->expr->left.sym == &symbol_yes) {
-// 			printf("IS TRISTATECONSTANT SYMBOL_YES\n");
-			
-			updateDefaultList(symbol_yes_fexpr, expr_yes, defaults);
-			
-			updateDefaultList(symbol_mod_fexpr, expr_mod, defaults);
+			struct pexpr *expr_y = expr_calculate_pexpr_y(expr);
+			struct pexpr *expr_m = expr_calculate_pexpr_m(expr);
+
+			updateDefaultList(symbol_yes_fexpr, expr_y, result, sym);
+			updateDefaultList(symbol_mod_fexpr, expr_m, result, sym);
 		}
 		/* if def.value = n/m/y */
-		else if (p->expr->type == E_SYMBOL && is_tristate_constant(p->expr->left.sym)) {
-// 			printf("IS TRISTATECONSTANT\n");
-			assert(sym_is_boolean(sym));
-			struct fexpr *s = const_true;
+		else if (p->expr->type == E_SYMBOL && sym_is_tristate_constant(p->expr->left.sym)) {
+			struct fexpr *s;
 			if (p->expr->left.sym == &symbol_yes)
 				s = symbol_yes_fexpr;
 			else if (p->expr->left.sym == &symbol_mod)
 				s = symbol_mod_fexpr;
-			else {
-// 				perror("Default value of n.");
-// 				print_sym_name(sym);
-				continue;
-			}
-			
-			assert(s != const_true);
-			updateDefaultList(s, expr_both, defaults);
+			else
+				s = symbol_no_fexpr;
+
+			updateDefaultList(s, expr_calculate_pexpr_both(expr), result, sym);
+		}
+		/* if def.value = n/m/y, but written as 0/1/2 for a boolean */
+		else if (sym_is_boolean(sym) &&
+			p->expr->type == E_SYMBOL &&
+			p->expr->left.sym->type == S_UNKNOWN &&
+			is_tri_as_num(p->expr->left.sym)) {
+
+			struct fexpr *s;
+			if (!strcmp(p->expr->left.sym->name, "0"))
+				s = symbol_no_fexpr;
+			else if (!strcmp(p->expr->left.sym->name, "1"))
+				s = symbol_mod_fexpr;
+			else
+				s = symbol_yes_fexpr;
+
+			updateDefaultList(s, expr_calculate_pexpr_both(expr), result, sym);
 		}
 		/* if def.value = non-boolean constant */
-		else if (p->expr->type == E_SYMBOL && p->expr->left.sym->type == S_UNKNOWN) {
-			// TODO
-			continue;
-// 			printf("IS NONBOOL CONSTANT\n");
-			print_sym_name(sym);
-			print_sym_name(p->expr->left.sym);
-// 			assert(sym_is_nonboolean(sym));
-
+		else if (is_nonbool_constant(p)) {
 			struct fexpr *s = sym_get_or_create_nonbool_fexpr(sym, p->expr->left.sym->name);
-			
-			assert(sym_is_nonboolean(sym));
-			
-			updateDefaultList(s, expr_both, defaults);
-		} 
+			updateDefaultList(s, expr_calculate_pexpr_both(expr), result, sym);
+		}
 		/* any expression which evaluates to n/m/y for a tristate */
 		else if (sym->type == S_TRISTATE) {
-// 			printf("IS TRISTATE EXPRESSION\n");
-			struct k_expr *ke = malloc(sizeof(struct k_expr));
-			ke->parent = NULL;
-			ke->type = KE_AND;
-			ke->left = ke_expr;
-			ke->right = ke_v;
-			
-			updateDefaultList(symbol_yes_fexpr, calculate_fexpr_y(ke), defaults);
-			
-			updateDefaultList(symbol_mod_fexpr, calculate_fexpr_m(ke), defaults);
+			struct expr *e_tmp = expr_alloc_and(p->expr, expr);
+			struct pexpr *expr_y = expr_calculate_pexpr_y(e_tmp);
+			struct pexpr *expr_m = expr_calculate_pexpr_m(e_tmp);
+			updateDefaultList(symbol_yes_fexpr, expr_y, result, sym);
+			updateDefaultList(symbol_mod_fexpr, expr_m, result, sym);
 		}
 		/* if non-boolean && def.value = non-boolean symbol */
-		else if (p->expr->type == E_SYMBOL && sym_is_nonboolean(sym) && sym_is_nonboolean(p->expr->left.sym)){
-// 			printf("IS NONBOOL ITEM\n");
-// 			print_sym_name(p->expr->left.sym);
-			// TODO
-		} 
+		else if (p->expr->type == E_SYMBOL && sym_is_nonboolean(sym) && sym_is_nonboolean(p->expr->left.sym)) {
+			struct prop_list *nb_sym_defaults = prop_list_init();
+			struct property *p_tmp;
+			for_all_defaults(p->expr->left.sym, p_tmp)
+				prop_list_add(nb_sym_defaults, p_tmp);
+
+			add_defaults(nb_sym_defaults, expr, result, sym);
+		}
 		/* any expression which evaluates to n/m/y */
 		else {
-// 			printf("IS ELSE EXPRESSION\n");
-			assert(sym->type == S_BOOLEAN);
-			struct k_expr *ke = malloc(sizeof(struct k_expr));
-			ke->parent = NULL;
-			ke->type = KE_AND;
-			ke->left = ke_expr;
-			ke->right = ke_v;
-			
-			updateDefaultList(symbol_yes_fexpr, calculate_fexpr_both(ke), defaults);
+			struct expr *e_tmp = expr_alloc_and(p->expr, expr);
+			struct pexpr *expr_both = expr_calculate_pexpr_both(e_tmp);
+			updateDefaultList(symbol_yes_fexpr, expr_both, result, sym);
 		}
 	}
-	
-	return defaults;
+}
+static struct defm_list * get_defaults(struct symbol *sym)
+{
+	struct defm_list *result = defm_list_init();
+	covered = pexf(const_false);
+
+	struct prop_list *defaults = prop_list_init();
+	struct property *p;
+	for_all_defaults(sym, p)
+		prop_list_add(defaults, p);
+
+	add_defaults(defaults, NULL, result, sym);
+
+	return result;
 }
 
 /*
  * return the default_map for "y", False if it doesn't exist
  */
-static struct fexpr * get_default_y(GArray *arr)
+static struct pexpr * get_default_y(struct defm_list *list)
 {
-	unsigned int i;
 	struct default_map *entry;
-	
-	for (i = 0; i < arr->len; i++) {
-		entry = g_array_index(arr, struct default_map *, i);
+	struct defm_node *node;
+
+	defm_list_for_each(node, list) {
+		entry = node->elem;
 		if (entry->val->type == FE_SYMBOL && entry->val->sym == &symbol_yes)
 			return entry->e;
 	}
-	
-	return const_false;
+
+	return pexf(const_false);
 }
 
 /*
  * return the default map for "m", False if it doesn't exist
  */
-static struct fexpr * get_default_m(GArray *arr)
+static struct pexpr *get_default_m(struct defm_list *list)
 {
-	unsigned int i;
 	struct default_map *entry;
-	
-	for (i = 0; i < arr->len; i++) {
-		entry = g_array_index(arr, struct default_map *, i);
+	struct defm_node *node;
+
+	defm_list_for_each(node, list) {
+		entry = node->elem;
 		if (entry->val->type == FE_SYMBOL && entry->val->sym == &symbol_mod)
 			return entry->e;
 	}
-	
-	return const_false;
+
+	return pexf(const_false);
 }
 
-/* 
+/*
+ * return the constraint when _some_ default value will be applied
+ */
+static struct pexpr *get_default_any(struct symbol *sym)
+{
+	if (!sym_is_nonboolean(sym))
+		return NULL;
+
+	struct property *prop;
+	struct expr *e;
+	struct pexpr *p = pexf(const_false);
+	for_all_defaults(sym, prop) {
+		if (prop->visible.expr)
+			e = prop->visible.expr;
+		else
+			e = expr_alloc_symbol(&symbol_yes);
+
+		if (expr_can_evaluate_to_mod(e))
+			p = pexpr_or(p, expr_calculate_pexpr_both(e));
+
+		p = pexpr_or(p, expr_calculate_pexpr_y(e));
+	}
+
+	return p;
+}
+
+/*
  * get the value for the range
  */
 static long long sym_get_range_val(struct symbol *sym, int base)
@@ -1018,25 +1131,64 @@ unsigned int count_counstraints(void)
 	unsigned int i, c = 0;
 	struct symbol *sym;
 	for_all_symbols(i, sym) {
-		if (sym->constraints->arr)
-			c += sym->constraints->arr->len;
+		if (sym->type == S_UNKNOWN)
+			continue;
+
+		c += sym->constraints->size;
 	}
-	
+
 	return c;
 }
 
 /*
  * add a constraint for a symbol
  */
-void sym_add_constraint(struct symbol *sym, struct fexpr *constraint)
+void sym_add_constraint(struct symbol *sym, struct pexpr *constraint)
 {
-	if (!constraint) return;
-	
+	if (!constraint)
+		return;
+
 	/* no need to add that */
-	if (constraint == const_true) return;
-	
+	if (constraint->type == PE_SYMBOL && constraint->left.fexpr == const_true)
+		return;
+
 	/* this should never happen */
-	if (constraint == const_false) perror("Adding const_false.");
-	
-	g_array_append_val(sym->constraints->arr, constraint);
+	if (constraint->type == PE_SYMBOL && constraint->left.fexpr == const_false)
+		perror("Adding const_false.");
+
+	pexpr_list_add(sym->constraints, constraint);
+
+	if (!pexpr_is_nnf(constraint))
+		pexpr_print("Not NNF:", constraint, -1);
+}
+
+/*
+ * add a constraint for a symbol, but check for duplicate constraints
+ */
+void sym_add_constraint_eq(struct symbol *sym, struct pexpr *constraint)
+{
+	if (!constraint)
+		return;
+
+	/* no need to add that */
+	if (constraint->type == PE_SYMBOL && constraint->left.fexpr == const_true)
+		return;
+
+	/* this should never happen */
+	if (constraint->type == PE_SYMBOL && constraint->left.fexpr == const_false)
+		perror("Adding const_false.");
+
+	if (!pexpr_is_nnf(constraint))
+		pexpr_print("Not NNF:", constraint, -1);
+
+	/* check the constraints for the same symbol */
+	struct pexpr_node *node;
+	pexpr_list_for_each(node, sym->constraints)
+		if (pexpr_eq(constraint, node->elem))
+			return;
+
+	pexpr_list_add(sym->constraints, constraint);
+
+	if (!pexpr_is_nnf(constraint))
+		pexpr_print("Not NNF:", constraint, -1);
 }

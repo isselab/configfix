@@ -13,6 +13,11 @@ void get_constraints(void);
 unsigned int count_counstraints(void);
 
 /* add a constraint for a symbol */
-void sym_add_constraint(struct symbol *sym, struct fexpr *constraint);
+void sym_add_constraint(struct symbol *sym, struct pexpr *constraint);
+
+void sym_add_constraint_fexpr(struct symbol *sym, struct fexpr *constraint);
+
+/* add a constraint for a symbol, but check for duplicate constraints */
+void sym_add_constraint_eq(struct symbol *sym, struct pexpr *constraint);
 
 #endif

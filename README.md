@@ -18,21 +18,17 @@ We have therefore developed a conflict-resolution algorithm integrated right wit
 
 ## Prerequisites
 
-As configfix is integrated within xconfig, it needs xconfig to run as well as the [Glib library](https://developer.gnome.org/glib/stable/glib-data-types.html).
+As configfix is integrated within xconfig, it needs xconfig to run.
 
 *  For xconfig:
 
     *  For Debian/Ubuntu: `apt install pkg-config g++ qtbase5-dev`
 
-*  For the Glib library:
-
-    *  For Debian/Ubuntu: `apt install libglib2.0-dev`
-
 
 ## Instructions
 
 1. Clone or download this repository.
-2. Download the kernel source tree from [the official archives](https://www.kernel.org/) and extract it. It works with versions 5.7.x - 5.9.x.
+2. Download the kernel source tree from [the official archives](https://www.kernel.org/) and extract it. It works with version 5.13.
 3. Run `copy_files.sh KERNEL_SOURCE_TREE` in this repository.
 4. Make sure that a `.config` is present in `KERNEL_SOURCE_TREE`.
 5. Run `make xconfig` in your extracted source tree.
@@ -51,7 +47,7 @@ The constraints as well as the SAT problem in DIMACS can be exported into textfi
 ## Limitations
 
 * Some conflicts can be fixed using various alternative fixes. We currently limit the number of proposed fixes to 3 for performance reasons. While every proposed fix should still result in the desired outcome, the solutions can be suboptimal in some cases. For example, an option can be enabled while still being invisible in the configurator.
-* The tool is somewhat memory-hungry. Currently, it needs about 1 GB of RAM to resolve conflicts, but we are working on reducing the memory consumption as well as improving the performance.
+* The tool is somewhat memory-hungry. Currently, it needs close to 1  GB of RAM to resolve conflicts.
 * The *Apply Fix*-button will try to apply all values from the selected fix. Sometimes it is not possible to set all values. In this case, please report the issue (see below).
 
 
@@ -65,7 +61,8 @@ Contributions to the project are appreciated. You can help, even if you are not 
 
 ## Credits
 
-* Patrick Franz (University of Gothenburg) `<patrick.franz@gu.se>`
+* Patrick Franz (University of Gothenburg) `<deltaone@debian.org>`
 * Ibrahim Fayaz (VecScan AB) `<phayax@gmail.com>`
 * Thorsten Berger (Chalmers | University of Gothenburg) `<thorsten.berger@chalmers.se>`
 * Sarah Nadi (University of Alberta) `<nadi@ualberta.ca>`
+* Evgeny Groshev (Chalmers | University of Gothenburg) `<groshev@student.chalmers.se>`

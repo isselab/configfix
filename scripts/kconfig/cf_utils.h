@@ -12,7 +12,6 @@ void init_config (const char *Kconfig_file);
 /* initialize satmap and cnf_clauses */
 void init_data(void);
 
-
 /* assign SAT-variables to all fexpr and create the sat_map */
 void assign_sat_variables(void);
 
@@ -28,27 +27,17 @@ char * get_tmp_var_as_char(int i);
 /* return a tristate value as a char * */
 char * tristate_get_char(tristate val);
 
+/* check whether an expr can evaluate to mod */
+bool expr_can_evaluate_to_mod(struct expr *e);
 
-/* check if a k_expr can evaluate to mod */
-bool can_evaluate_to_mod(struct k_expr *e);
+/* parse an expr as a pexpr */
+struct pexpr * expr_parse_to_pexpr(struct expr *e);
 
-/* return the constant FALSE as a k_expr */
-struct k_expr * get_const_false_as_kexpr(void);
-
-/* return the constant TRUE as a k_expr */
-struct k_expr * get_const_true_as_kexpr(void);
-
-
-/* retrieve value from satmap given a key (sat_variable_nr) */
-struct fexpr * get_fexpr_from_satmap(int key);
-
-
-/* parse an expr as a k_expr */
-struct k_expr * parse_expr(struct expr *e, struct k_expr *parent);
-
+/* print an expr */
+void print_expr(char *tag, struct expr *e, int prevtoken);
 
 /* check, if the symbol is a tristate-constant */
-bool is_tristate_constant(struct symbol *sym);
+bool sym_is_tristate_constant(struct symbol *sym);
 
 /* check, if a symbol is of type boolean or tristate */
 bool sym_is_boolean(struct symbol *sym);
@@ -66,15 +55,33 @@ bool sym_has_prompt(struct symbol *sym);
 struct property * sym_get_prompt(struct symbol *sym);
 
 /* return the condition for the property, True if there is none */
-struct fexpr * prop_get_condition(struct property *prop);
+struct pexpr * prop_get_condition(struct property *prop);
+
+/* return the default property, NULL if none exists or can be satisfied */
+struct property *sym_get_default_prop(struct symbol *sym);
+
+/* check whether a non-boolean symbol has a value set */
+bool sym_nonbool_has_value_set(struct symbol *sym);
 
 /* return the name of the symbol */
 char * sym_get_name(struct symbol *sym);
 
 /* check whether symbol is to be changed */
-bool sym_is_sdv(GArray *arr, struct symbol *sym);
+bool sym_is_sdv(struct sdv_list *list, struct symbol *sym);
 
-/* add an integer to a GArray */
-void g_array_add_ints(int num, ...);
+/* print a symbol's name */
+void print_sym_name(struct symbol *sym);
+
+/* print all constraints for a symbol */
+void print_sym_constraint(struct symbol *sym);
+
+/* print a default map */
+void print_default_map(struct defm_list *map);
+
+/* check whether a string is a number */
+bool string_is_number(char *s);
+
+/* check whether a string is a hexadecimal number */
+bool string_is_hex(char *s);
 
 #endif

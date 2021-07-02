@@ -3,55 +3,54 @@
 # Kernel configuration targets
 # These targets are used from top-level makefile
 
-PHONY += xconfig gconfig menuconfig config localmodconfig localyesconfig \
-	build_menuconfig build_nconfig build_gconfig build_xconfig \
-	cfconfig cfcliconfig cfoutconfig
-
 ifdef KBUILD_KCONFIG
 Kconfig := $(KBUILD_KCONFIG)
 else
 Kconfig := Kconfig
 endif
 
+ifndef KBUILD_DEFCONFIG
+KBUILD_DEFCONFIG := defconfig
+endif
+
 ifeq ($(quiet),silent_)
 silent := -s
 endif
 
+export KCONFIG_DEFCONFIG_LIST :=
+ifndef cross_compiling
+kernel-release := $(shell uname -r)
+KCONFIG_DEFCONFIG_LIST += \
+	/lib/modules/$(kernel-release)/.config \
+	/etc/kernel-config \
+	/boot/config-$(kernel-release)
+endif
+KCONFIG_DEFCONFIG_LIST += arch/$(SRCARCH)/configs/$(KBUILD_DEFCONFIG)
+
 # We need this, in case the user has it in its environment
 unexport CONFIG_
 
-xconfig: $(obj)/qconf
-	$< $(silent) $(Kconfig)
+config-prog	 := conf
+menuconfig-prog	 := mconf
+nconfig-prog	 := nconf
+gconfig-prog	 := gconf
+xconfig-prog	 := qconf
+cfconfig-prog    := cfconfig
+cfoutconfig-prog := cfoutconfig
 
-gconfig: $(obj)/gconf
-	$< $(silent) $(Kconfig)
+define config_rule
+PHONY += $(1)
+$(1): $(obj)/$($(1)-prog)
+	$(Q)$$< $(silent) $(Kconfig)
 
-menuconfig: $(obj)/mconf
-	$< $(silent) $(Kconfig)
+PHONY += build_$(1)
+build_$(1): $(obj)/$($(1)-prog)
+endef
 
-config: $(obj)/conf
-	$< $(silent) --oldaskconfig $(Kconfig)
+$(foreach c, config menuconfig nconfig gconfig xconfig cfconfig \
+cfoutconfig, $(eval $(call config_rule,$(c))))
 
-nconfig: $(obj)/nconf
-	$< $(silent) $(Kconfig)
-
-cfconfig: $(obj)/cfconfig
-	$< $(silent) $(Kconfig)
-
-cfcliconfig: $(obj)/cfcliconfig
-	$< $(silent) $(Kconfig)
-
-cfoutconfig: $(obj)/cfoutconfig
-	$< $(silent) $(Kconfig)
-
-build_menuconfig: $(obj)/mconf
-
-build_nconfig: $(obj)/nconf
-
-build_gconfig: $(obj)/gconf
-
-build_xconfig: $(obj)/qconf
-
+PHONY += localmodconfig localyesconfig
 localyesconfig localmodconfig: $(obj)/conf
 	$(Q)$(PERL) $(srctree)/$(src)/streamline_config.pl --$@ $(srctree) $(Kconfig) > .tmp.config
 	$(Q)if [ -f .config ]; then 				\
@@ -78,12 +77,12 @@ simple-targets := oldconfig allnoconfig allyesconfig allmodconfig \
 PHONY += $(simple-targets)
 
 $(simple-targets): $(obj)/conf
-	$< $(silent) --$@ $(Kconfig)
+	$(Q)$< $(silent) --$@ $(Kconfig)
 
 PHONY += savedefconfig defconfig
 
 savedefconfig: $(obj)/conf
-	$< $(silent) --$@=defconfig $(Kconfig)
+	$(Q)$< $(silent) --$@=defconfig $(Kconfig)
 
 defconfig: $(obj)/conf
 ifneq ($(wildcard $(srctree)/arch/$(SRCARCH)/configs/$(KBUILD_DEFCONFIG)),)
@@ -104,24 +103,15 @@ configfiles=$(wildcard $(srctree)/kernel/configs/$@ $(srctree)/arch/$(SRCARCH)/c
 	$(Q)$(CONFIG_SHELL) $(srctree)/scripts/kconfig/merge_config.sh -m .config $(configfiles)
 	$(Q)$(MAKE) -f $(srctree)/Makefile olddefconfig
 
-PHONY += kvmconfig
-kvmconfig: kvm_guest.config
-	@echo >&2 "WARNING: 'make $@' will be removed after Linux 5.10"
-	@echo >&2 "         Please use 'make $<' instead."
-
-PHONY += xenconfig
-xenconfig: xen.config
-	@echo >&2 "WARNING: 'make $@' will be removed after Linux 5.10"
-	@echo >&2 "         Please use 'make $<' instead."
-
 PHONY += tinyconfig
 tinyconfig:
-	$(Q)$(MAKE) -f $(srctree)/Makefile allnoconfig tiny.config
+	$(Q)KCONFIG_ALLCONFIG=kernel/configs/tiny-base.config $(MAKE) -f $(srctree)/Makefile allnoconfig
+	$(Q)$(MAKE) -f $(srctree)/Makefile tiny.config
 
 # CHECK: -o cache_dir=<path> working?
 PHONY += testconfig
 testconfig: $(obj)/conf
-	$(PYTHON3) -B -m pytest $(srctree)/$(src)/tests \
+	$(Q)$(PYTHON3) -B -m pytest $(srctree)/$(src)/tests \
 	-o cache_dir=$(abspath $(obj)/tests/.cache) \
 	$(if $(findstring 1,$(KBUILD_VERBOSE)),--capture=no)
 clean-files += tests/.cache
@@ -152,13 +142,14 @@ help:
 	@echo  '  olddefconfig	  - Same as oldconfig but sets new symbols to their'
 	@echo  '                    default value without prompting'
 	@echo  '  tinyconfig	  - Configure the tiniest possible kernel'
-	@echo  '  cfoutconfig	  - Output the constraint from configfix into a textfile'
 	@echo  '  testconfig	  - Run Kconfig unit tests (requires python3 and pytest)'
+	@echo  '  cfconfig        - CLI tool for debugging ConfigFix'
+	@echo  '  cfoutconfig     - Print constraints and DIMACS-output into files'
 
 # ===========================================================================
 # object files used by all kconfig flavours
-common-objs	:= confdata.o expr.o lexer.lex.o parser.tab.o preprocess.o \
-		   symbol.o util.o
+common-objs	:= confdata.o expr.o lexer.lex.o menu.o parser.tab.o \
+		   preprocess.o symbol.o util.o
 
 $(obj)/lexer.lex.o: $(obj)/parser.tab.h
 HOSTCFLAGS_lexer.lex.o	:= -I $(srctree)/$(src)
@@ -190,41 +181,22 @@ $(foreach f, mconf.o $(lxdialog), \
 
 $(addprefix $(obj)/, mconf.o $(lxdialog)): $(obj)/mconf-cfg
 
-### configfix ###
-hostprogs		+= cfconfig cfcliconfig cfoutconfig
-cfconf-objs		:= configfix.o cf_constraints.o cf_fexpr.o cf_print.o cf_rangefix.o cf_satutils.o cf_utils.o picosat.o
+# configfix: Used for the xconfig target as well as for its debugging tools
+hostprogs        += cfconfig cfoutconfig
+cfconf-objs      := configfix.o cf_constraints.o cf_expr.o cf_rangefix.o cf_satutils.o cf_utils.o picosat.o
+cfconfig-objs    := cfconfig.o $(cfconf-objs) $(common-objs)
+cfoutconfig-objs := cfoutconfig.o $(cfconf-objs) $(common-objs)
 
-cfconfig-objs		:= cfconfig.o $(cfconf-objs) $(common-objs)
-cfcliconfig-objs	:= cfcliconfig.o $(cfconf-objs) $(common-objs)
-cfoutconfig-objs	:= cfoutconfig.o $(cfconf-objs) $(common-objs)
-
-HOSTLDLIBS_cfconfig		= $(shell pkg-config --libs glib-2.0)
-HOSTCFLAGS_cfconfig.o		= $(shell pkg-config --cflags glib-2.0)
-HOSTLDLIBS_cfcliconfig		= $(shell pkg-config --libs glib-2.0)
-HOSTCFLAGS_cfcliconfig.o	= $(shell pkg-config --cflags glib-2.0)
-HOSTLDLIBS_cfoutconfig		= $(shell pkg-config --libs glib-2.0)
-HOSTCFLAGS_cfoutconfig.o	= $(shell pkg-config --cflags glib-2.0)
-
-HOSTCFLAGS_configfix.o		= $(shell pkg-config --cflags glib-2.0)
-HOSTCFLAGS_cf_constraints.o	= $(shell pkg-config --cflags glib-2.0)
-HOSTCFLAGS_cf_fexpr.o		= $(shell pkg-config --cflags glib-2.0)
-HOSTCFLAGS_cf_print.o 		= $(shell pkg-config --cflags glib-2.0)
-HOSTCFLAGS_cf_rangefix.o	= $(shell pkg-config --cflags glib-2.0)
-HOSTCFLAGS_cf_satutils.o	= $(shell pkg-config --cflags glib-2.0)
-HOSTCFLAGS_cf_utils.o 		= $(shell pkg-config --cflags glib-2.0)
-HOSTCFLAGS_picosat.o		= -DTRACE -Wno-missing-prototypes -Wno-pointer-compare
-### configfix end ###
+HOSTCFLAGS_picosat.o = -DTRACE -Wno-missing-prototypes -Wno-pointer-compare
 
 # qconf: Used for the xconfig target based on Qt
 hostprogs	+= qconf
-qconf-cxxobjs	:= qconf.o qconf-moc.o conflict_resolver.o
+qconf-cxxobjs	:= qconf.o qconf-moc.o
 qconf-objs	:= images.o $(common-objs) $(cfconf-objs)
 
-HOSTLDLIBS_qconf	= $(shell . $(obj)/qconf-cfg && echo $$libs && pkg-config --libs glib-2.0)
-HOSTLDLIBS_conflict_resolver	= $(shell . $(obj)/qconf-cfg && echo $$libs)
-HOSTCXXFLAGS_qconf.o	= $(shell . $(obj)/qconf-cfg && echo $$cflags && pkg-config --cflags glib-2.0)
-HOSTCXXFLAGS_conflict_resolver.o	= $(shell . $(obj)/qconf-cfg && echo $$cflags)
-HOSTCXXFLAGS_qconf-moc.o = $(shell . $(obj)/qconf-cfg && echo $$cflags && pkg-config --cflags glib-2.0)
+HOSTLDLIBS_qconf	= $(shell . $(obj)/qconf-cfg && echo $$libs && echo -lpthread)
+HOSTCXXFLAGS_qconf.o	= $(shell . $(obj)/qconf-cfg && echo $$cflags)
+HOSTCXXFLAGS_qconf-moc.o = $(shell . $(obj)/qconf-cfg && echo $$cflags)
 
 $(obj)/qconf.o: $(obj)/qconf-cfg
 
