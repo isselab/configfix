@@ -49,7 +49,7 @@ static struct defm_list * get_defaults(struct symbol *sym);
 static struct pexpr * get_default_y(struct defm_list *list);
 static struct pexpr * get_default_m(struct defm_list *list);
 static struct pexpr *get_default_any(struct symbol *sym);
-static long long sym_get_range_val(struct symbol *sym, int base);
+static long sym_get_range_val(struct symbol *sym, int base);
 
 /* -------------------------------------- */
 
@@ -1135,7 +1135,7 @@ static struct pexpr *get_default_any(struct symbol *sym)
 /*
  * get the value for the range
  */
-static long long sym_get_range_val(struct symbol *sym, int base)
+static long sym_get_range_val(struct symbol *sym, int base)
 {
 	sym_calc_value(sym);
 	switch (sym->type) {
@@ -1148,7 +1148,7 @@ static long long sym_get_range_val(struct symbol *sym, int base)
 	default:
 		break;
 	}
-	return strtoll(sym->curr.val, NULL, base);
+	return strtol(sym->curr.val, NULL, base);
 }
 
 /*

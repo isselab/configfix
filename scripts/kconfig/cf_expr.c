@@ -209,68 +209,117 @@ static void create_fexpr_choice(struct symbol *sym)
 }
 
 /*
- * evaluate an unequality with GCC_VERSION
+ * evaluate an unequality between a non-Boolean symbol and a constant
  */
-static struct pexpr * gcc_version_eval(struct expr* e)
+static struct pexpr * expr_eval_unequal_nonbool_const(struct symbol *sym, struct symbol *compval, enum expr_type type)
 {
-	if (!e)
+	if (!sym || !compval)
 		return pexf(const_false);
 
-	long long actual_gcc_ver, sym_gcc_ver;
-	if (e->left.sym == sym_find("GCC_VERSION")) {
-		actual_gcc_ver = strtoll(sym_get_string_value(e->left.sym), NULL, 10);
-		sym_gcc_ver = strtoll(e->right.sym->name, NULL, 10);
-	} else {
-		actual_gcc_ver = strtoll(sym_get_string_value(e->right.sym), NULL, 10);
-		sym_gcc_ver = strtoll(e->left.sym->name, NULL, 10);
-	}
-
-	switch (e->type) {
-	case E_LTH:
-		return actual_gcc_ver < sym_gcc_ver ? pexf(const_true) : pexf(const_false);
-	case E_LEQ:
-		return actual_gcc_ver <= sym_gcc_ver ? pexf(const_true) : pexf(const_false);
-	case E_GTH:
-		return actual_gcc_ver > sym_gcc_ver ? pexf(const_true) : pexf(const_false);
-	case E_GEQ:
-		return actual_gcc_ver >= sym_gcc_ver ? pexf(const_true) : pexf(const_false);
+	int base = 0;
+	switch (sym->type) {
+	case S_INT:
+		base = 10;
+		break;
+	case S_HEX:
+		base = 16;
+		break;
 	default:
-		perror("Wrong type in gcc_version_eval.");
+		break;
 	}
 
-	return pexf(const_false);
+	struct pexpr *c = pexf(const_false);
+	long val = strtol(compval->name, NULL, base);
+
+	struct fexpr_node *node;
+	struct fexpr *fe;
+	for (node = sym->nb_vals->head->next; node != NULL; node = node->next) {
+		fe = node->elem;
+		long symval = strtol(str_get(&fe->nb_val), NULL, base);
+
+		switch (type) {
+		case E_LTH:
+			if (symval < val)
+				c = pexpr_or(c, pexf(fe));
+			break;
+		case E_LEQ:
+			if (symval <= val)
+				c = pexpr_or(c, pexf(fe));
+			break;
+		case E_GTH:
+			if (symval > val)
+				c = pexpr_or(c, pexf(fe));
+			break;
+		case E_GEQ:
+			if (symval >= val)
+				c = pexpr_or(c, pexf(fe));
+			break;
+		default:
+			perror("Illegal unequal.");
+		}
+	}
+
+	return c;
 }
 
 /*
- * evaluate an unequality with 2 boolean symbols
+ * evaluate an unequality between 2 Boolean symbols
  */
-static struct pexpr * expr_eval_unequal_bool(struct expr *e)
+static struct pexpr * expr_eval_unequal_bool(struct symbol *left, struct symbol *right, enum expr_type type)
 {
-	if (!e)
+	if (!left || !right)
 		return pexf(const_false);
 
-	if (!sym_is_boolean(e->left.sym) || !sym_is_boolean(e->right.sym)) {
+	if (!sym_is_boolean(left) || !sym_is_boolean(right)) {
 		perror("Comparing 2 symbols that should be boolean.");
 		return pexf(const_false);
 	}
 
-	int val_left = sym_get_tristate_value(e->left.sym);
-	int val_right = sym_get_tristate_value(e->right.sym);
-
-	switch (e->type) {
+	struct pexpr *c = pexf(const_false);
+	switch (type) {
 	case E_LTH:
-		return val_left < val_right ? pexf(const_true) : pexf(const_false);
+		c = pexpr_and(
+			pexpr_not(sym_get_fexpr_both(left)),
+			sym_get_fexpr_both(right));
+		if (left->type == S_TRISTATE)
+			c = pexpr_or(c,
+				pexpr_and
+					(pexf(left->fexpr_m),
+					 pexf(right->fexpr_y)));
+		break;
 	case E_LEQ:
-		return val_left <= val_right ? pexf(const_true) : pexf(const_false);
+		c = pexpr_and(pexf(left->fexpr_y), pexf(right->fexpr_y));
+		if (left->type == S_TRISTATE)
+			c = pexpr_or(c,
+				pexpr_and(
+					pexf(left->fexpr_m),
+					sym_get_fexpr_both(right)));
+		c = pexpr_or(c, pexpr_not(sym_get_fexpr_both(left)));
+		break;
 	case E_GTH:
-		return val_left > val_right ? pexf(const_true) : pexf(const_false);
+		c = pexpr_and(
+			sym_get_fexpr_both(left),
+			pexpr_not(sym_get_fexpr_both(right)));
+		if (right->type == S_TRISTATE)
+			c = pexpr_or(c,
+				pexpr_and
+					(pexf(left->fexpr_y),
+					 pexf(right->fexpr_m)));
+		break;
 	case E_GEQ:
-		return val_left >= val_right ? pexf(const_true) : pexf(const_false);
+		c = pexpr_and(pexf(left->fexpr_y), pexf(right->fexpr_y));
+		if (right->type == S_TRISTATE)
+			c = pexpr_or(c,
+				pexpr_and(
+					sym_get_fexpr_both(left),
+					pexf(right->fexpr_m)));
+		c = pexpr_or(c, pexpr_not(sym_get_fexpr_both(right)));
+		break;
 	default:
 		perror("Wrong type in expr_eval_unequal_bool.");
 	}
 
-	return pexf(const_false);
+	return c;
 }
 /*
  * calculate, when expr will evaluate to yes or mod
@@ -422,7 +471,7 @@ struct pexpr * expr_calculate_pexpr_m_or(struct expr *a, struct expr *b)
 
 /*
  * calculate, when expr of type OR will evaluate to mod or yes
- * (A_m || A ||  B_m || B)
+ * (A_m || A || B_m || B)
  */
 struct pexpr * expr_calculate_pexpr_both_or(struct expr *a, struct expr *b)
 {
@@ -469,8 +518,6 @@ struct fexpr * sym_create_nonbool_fexpr(struct symbol *sym, char *value)
 		else
 			return sym->nb_vals->head->elem;
 	}
-
-
 
 	struct fexpr *e = sym_get_nonbool_fexpr(sym, value);
 
@@ -637,15 +684,24 @@ struct pexpr * expr_calculate_pexpr_y_comp(struct expr *e)
 	case E_LEQ:
 	case E_GTH:
 	case E_GEQ:
-		/* "special" hack for GCC_VERSION */
-		if (expr_contains_symbol(e, sym_find("GCC_VERSION")))
-			return gcc_version_eval(e);
+		/* compare non-Boolean symbol with constant */
+		if (sym_is_nonboolean(e->left.sym) &&
+			e->right.sym->type == S_UNKNOWN &&
+			string_is_number(e->right.sym->name)
+		) {
+			return expr_eval_unequal_nonbool_const(e->left.sym, e->right.sym, e->type);
+		}
+		if (sym_is_nonboolean(e->right.sym) &&
+			e->left.sym->type == S_UNKNOWN &&
+			string_is_number(e->left.sym->name)
+		) {
+			return expr_eval_unequal_nonbool_const(e->right.sym, e->left.sym, e->type);
+		}
 
-		/* "special" hack for CRAMFS <= MTD */
-		if (expr_contains_symbol(e, sym_find("CRAMFS")) && expr_contains_symbol(e, sym_find("MTD")))
-			return expr_eval_unequal_bool(e);
+		/* compare 2 Boolean symbols */
+		if (sym_is_boolean(e->left.sym) && sym_is_boolean(e->right.sym))
+			return expr_eval_unequal_bool(e->left.sym, e->right.sym, e->type);
 
-		// TODO handle NR_CPUS
 		return pexf(const_false);
 	default:
 		perror("Unhandled type - expr_calculate_pexpr_y_comp");
@@ -876,7 +932,6 @@ bool pexpr_is_nnf(struct pexpr *e)
 
 	return false;
 }
-
 
 /*
  * return fexpr_both for a symbol
