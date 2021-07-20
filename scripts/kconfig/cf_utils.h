@@ -30,8 +30,11 @@ char * tristate_get_char(tristate val);
 /* check whether an expr can evaluate to mod */
 bool expr_can_evaluate_to_mod(struct expr *e);
 
-/* parse an expr as a pexpr */
-struct pexpr * expr_parse_to_pexpr(struct expr *e);
+/* check whether an expr is a non-Boolean constant */
+bool expr_is_nonbool_constant(struct expr *e);
+
+/* check whether a symbol is a non-Boolean constant */
+bool sym_is_nonbool_constant(struct symbol *sym);
 
 /* print an expr */
 void print_expr(char *tag, struct expr *e, int prevtoken);

@@ -409,6 +409,7 @@ void sym_add_assumption(PicoSAT *pico, struct symbol *sym)
 
 		/* symbol does not have a value */
 		if (!sym_nonbool_has_value_set(sym)) {
+
 			/* set value for sym=n */
 			picosat_assume(pico, e->satval);
 			e->assumption = true;
