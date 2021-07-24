@@ -7,7 +7,7 @@
 # This script expects $CONFIGFIX_TEST_PATH to be set.
 # 
 # The generated .config is saved into $CONFIG_TEST_PATH/$ARCH/config.XX
-# together with generate.sh, which let re-creating the same configuration
+# together with generate.sh, which lets re-creating the same configuration
 # by re-using the KCONFIG_SEED value, and run.sh, which allows starting
 # xconfig with the generated .config.
 # 
@@ -70,6 +70,7 @@ PROBABILITIES="10 20 30 40 50 60 70 80 90"
 cd ../../
 
 # generate base configuration, forward KCONFIG_SEED printout
+# export KCONFIG_PROBABILITY=100
 make randconfig 2> generate.sh
 
 # move files files
