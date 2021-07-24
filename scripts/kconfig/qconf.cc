@@ -77,7 +77,7 @@ static int testing_mode = RANDOM_TESTING;
 // maximum no. symbols in a random conflict
 #define MAX_CONFLICT_SIZE 5 //10
 // number of random conflicts of each size
-#define NO_CONFLICTS 5 //5
+#define NO_CONFLICTS 1 //5
 
 #define BASE_CONFIG ".config.base"
 #define RESULTS_FILE "results.csv"
@@ -2567,7 +2567,7 @@ static void print_setup(const char* name)
 		printf("%-27s %s\n\n", "Root menu prompt:", rootmenu.prompt->text);
 	
 	printf("%-27s %s\n", 
-		"!! CONFIGFIX_PATH:", getenv("CONFIGFIX_PATH"));	
+		"CONFIGFIX_PATH:", getenv("CONFIGFIX_PATH"));	
 	printf("%-27s %s\n", 
 		"CONFIGFIX_TEST_PATH:", getenv("CONFIGFIX_TEST_PATH"));
 	printf("%-27s %s\n", "Results file:", get_results_file());
