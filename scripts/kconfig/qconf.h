@@ -266,7 +266,7 @@ public slots:
 // #ifdef CONFIGFIX_TEST
     void switchTestingMode();
 	void testRandomConflict();
-	void generateConflict();
+	void generateConflict(std::uniform_int_distribution<int> dist);
 	void saveConflict();
 	void verifyDiagnoses(const char *result_prefix);
 // #endif

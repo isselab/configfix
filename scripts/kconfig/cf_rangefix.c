@@ -72,7 +72,7 @@ static unsigned int nr_of_assumptions = 0, nr_of_assumptions_true = 0;
 
 GArray * rangefix_run(PicoSAT *pico)
 {
-	printf("Starting RangeFix...\n");
+	printf("Starting RangeFix with %i sec timeout...\n", MAX_SECONDS);
 	printf("Generating diagnoses...");
 	clock_t start, end;
 	double time;
