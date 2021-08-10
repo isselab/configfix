@@ -19,8 +19,6 @@
 
 #define SATMAP_INIT_SIZE 2
 
-static void print_expr_util(struct expr *e, int prevtoken);
-
 /*
  * parse Kconfig-file and read .config
  */
@@ -383,7 +381,24 @@ bool sym_nonbool_has_value_set(struct symbol *sym)
 	if (sym->type == S_HEX || sym->type == S_INT)
 		return false;
 
-	return true;
+	/* cannot have a value with unmet dependencies */
+	if (sym->dir_dep.expr && sym->dir_dep.tri == no)
+		return false;
+
+	/* visible prompt => value set */
+	struct property *prompt = sym_get_prompt(sym);
+	if (prompt != NULL && prompt->visible.tri != no)
+		return true;
+
+	/* invisible prompt => must get value from default value */
+	struct property *p = sym_get_default_prop(sym);
+	if (p == NULL)
+		return false;
+
+	if (!strcmp(sym_get_string_default(sym), ""))
+		return true;
+
+	return false;
 }
 
 /*

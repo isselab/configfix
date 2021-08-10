@@ -21,7 +21,7 @@
 #define PRINT_UNSAT_CORE true
 #define PRINT_DIAGNOSES false
 #define PRINT_DIAGNOSIS_FOUND true
-#define MINIMISE_DIAGNOSES false
+#define MINIMISE_DIAGNOSES true
 #define MINIMISE_UNSAT_CORE true
 
 static struct fexl_list *diagnoses;
