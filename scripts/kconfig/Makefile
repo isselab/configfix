@@ -30,11 +30,11 @@ KCONFIG_DEFCONFIG_LIST += arch/$(SRCARCH)/configs/$(KBUILD_DEFCONFIG)
 # We need this, in case the user has it in its environment
 unexport CONFIG_
 
-config-prog	 := conf
-menuconfig-prog	 := mconf
-nconfig-prog	 := nconf
-gconfig-prog	 := gconf
-xconfig-prog	 := qconf
+config-prog	:= conf
+menuconfig-prog	:= mconf
+nconfig-prog	:= nconf
+gconfig-prog	:= gconf
+xconfig-prog	:= qconf
 cfconfig-prog    := cfconfig
 cfoutconfig-prog := cfoutconfig
 
