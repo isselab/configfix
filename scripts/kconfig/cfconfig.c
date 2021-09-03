@@ -18,6 +18,7 @@
 
 static struct symbol * read_symbol_from_stdin(void);
 static struct symbol_dvalue * sym_create_sdv(struct symbol *sym, char *input);
+static void handle_fixes(struct sfl_list *diag);
 
 /* -------------------------------------- */
 
@@ -37,7 +38,6 @@ int main(int argc, char *argv[])
 	init_config(argv[1]);
 
 	struct sfl_list *diagnoses;
-	struct sfix_list *chosen_fix;
 	struct sdv_list *symbols;
 
 	while(1) {
@@ -59,10 +59,7 @@ int main(int argc, char *argv[])
 		sdv_list_add(symbols, sdv);
 
 		diagnoses = run_satconf(symbols);
-		chosen_fix = choose_fix(diagnoses);
-
-		if (chosen_fix != NULL)
-			apply_fix(chosen_fix);
+		handle_fixes(diagnoses);
 	}
 
 	return EXIT_SUCCESS;
@@ -115,4 +112,65 @@ static struct symbol_dvalue * sym_create_sdv(struct symbol *sym, char *input)
 	}
 
 	return sdv;
+}
+
+/*
+ * print the diagnoses of type symbol_fix
+ */
+static void print_diagnoses_symbol(struct sfl_list *diag_sym)
+{
+	struct sfl_node *arr;
+	unsigned int i = 1;
+
+	sfl_list_for_each(arr, diag_sym) {
+		printd(" %d: ", i++);
+		print_diagnosis_symbol(arr->elem);
+	}
+}
+
+static void apply_all_adiagnoses(struct sfl_list *diag) {
+	printd("Applying all diagnoses now...\n");
+
+	unsigned int counter = 1;
+	struct sfl_node *node;
+	sfl_list_for_each(node, diag) {
+		printd("\nDiagnosis %d:\n", counter++);
+		apply_fix(node->elem);
+
+		printd("\nResetting config.\n");
+		conf_read(NULL);
+	}
+}
+
+/*
+ * print all void print_fixes()
+ */
+static void handle_fixes(struct sfl_list *diag)
+{
+	printd("=== GENERATED DIAGNOSES ===\n");
+	printd("-1: No changes wanted\n");
+	printd(" 0: Apply all diagnoses\n");
+	print_diagnoses_symbol(diag);
+
+	int choice;
+	printd("\n> Choose option: ");
+	scanf("%d", &choice);
+
+	if (choice == -1 || choice > diag->size)
+		return;
+
+	if (choice == 0) {
+		apply_all_adiagnoses(diag);
+		return;
+	}
+
+	unsigned int counter;
+	struct sfl_node *node = diag->head;
+	for (counter = 1; counter < choice; counter++)
+		node = node->next;
+
+	apply_fix(node->elem);
+
+	printd("\nResetting config.\n");
+	conf_read(NULL);
 }

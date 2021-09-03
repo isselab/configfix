@@ -660,8 +660,8 @@ struct pexpr * expr_calculate_pexpr_y_equals(struct expr *e)
 		return pexf(const_false);
 
 	/* any other comparison is not supported and should not be executed */
-// 	perror("Unsupported equality.");
-// 	print_expr(":", e, 0);
+	perror("Unsupported equality.");
+	print_expr(":", e, 0);
 
 	return pexf(const_false);
 }

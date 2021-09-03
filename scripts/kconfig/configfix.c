@@ -261,6 +261,8 @@ static bool syms_have_target_value(struct sfix_list *list)
 		if (!sym_is_conflict_sym(fix->sym))
 			continue;
 
+		sym_calc_value(fix->sym);
+
 		if (sym_is_boolean(fix->sym)) {
 			if (fix->tri != sym_get_tristate_value(fix->sym))
 				return false;
@@ -357,6 +359,7 @@ int apply_fix(struct sfix_list *fix)
 			node = next;
 			no_symbols_set++;
 		}
+
 		iterations++;
 	}
 
