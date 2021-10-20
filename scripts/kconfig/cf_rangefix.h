@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2020 Patrick Franz <patfra71@gmail.com>
+ * Copyright (C) 2021 Patrick Franz <deltaone@debian.org>
  */
 
 #ifndef CF_RANGEFIX_H
