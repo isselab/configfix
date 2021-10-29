@@ -61,7 +61,7 @@ int run_satconf_cli(const char *Kconfig_file)
 		create_constants();
 
 		/* assign SAT variables & create sat_map */
-		assign_sat_variables();
+		create_sat_variables();
 
 		/* get the constraints */
 		get_constraints();
@@ -152,7 +152,7 @@ struct sfl_list *run_satconf(struct sdv_list *symbols)
 		create_constants();
 
 		/* assign SAT variables & create sat_map */
-		assign_sat_variables();
+		create_sat_variables();
 
 		/* get the constraints */
 		get_constraints();

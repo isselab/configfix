@@ -43,7 +43,7 @@ int main(int argc, char *argv[])
 	create_constants();
 
 	/* assign SAT variables & create sat_map */
-	assign_sat_variables();
+	create_sat_variables();
 
 	/* get the constraints */
 	get_constraints();

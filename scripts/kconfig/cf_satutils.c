@@ -63,10 +63,13 @@ void construct_cnf_clauses(PicoSAT *p)
 
 		struct pexpr_node *node;
 		pexpr_list_for_each(node, sym->constraints) {
-			if (pexpr_is_cnf(node->elem))
+			if (pexpr_is_cnf(node->elem)) {
 				unfold_cnf_clause(node->elem);
-			else
+				picosat_add(pico, 0);
+			} else {
 				build_cnf_tseytin(node->elem);
+			}
+
 		}
 	}
 }
@@ -74,15 +77,15 @@ void construct_cnf_clauses(PicoSAT *p)
 /*
  * helper function to add an expression to a CNF-clause
  */
-static void unfold_cnf_clause_util(struct pexpr *e)
+static void unfold_cnf_clause(struct pexpr *e)
 {
 	switch (e->type) {
 	case PE_SYMBOL:
 		picosat_add(pico, e->left.fexpr->satval);
 		break;
 	case PE_OR:
-		unfold_cnf_clause_util(e->left.pexpr);
-		unfold_cnf_clause_util(e->right.pexpr);
+		unfold_cnf_clause(e->left.pexpr);
+		unfold_cnf_clause(e->right.pexpr);
 		break;
 	case PE_NOT:
 		picosat_add(pico, -(e->left.pexpr->left.fexpr->satval));
@@ -90,19 +93,6 @@ static void unfold_cnf_clause_util(struct pexpr *e)
 	default:
 		perror("Not in CNF, FE_EQUALS.");
 	}
-}
-
-/*
- * extract the variables from a pexpr in CNF
- */
-static void unfold_cnf_clause(struct pexpr *e)
-{
-	if (!pexpr_is_cnf(e))
-		return;
-
-	unfold_cnf_clause_util(e);
-
-	picosat_add(pico, 0);
 }
 
 /*

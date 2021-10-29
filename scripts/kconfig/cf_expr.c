@@ -152,7 +152,6 @@ static void create_fexpr_nonbool(struct symbol *sym)
 	}
 }
 
-
 /*
  * set fexpr_y and fexpr_m simply to False
  */
@@ -161,7 +160,6 @@ static void create_fexpr_unknown(struct symbol *sym)
 	sym->fexpr_y = const_false;
 	sym->fexpr_m = const_false;
 }
-
 
 /*
  * create the fexpr for a choice symbol
@@ -1100,7 +1098,6 @@ void pexpr_as_char(struct pexpr *e, struct gstr *s, int parent)
 		str_append(s, ")");
 		return;
 	case PE_AND:
-		/* need this hack for the FeatureExpr parser */
 		if (parent != PE_AND)
 			str_append(s, "(");
 		pexpr_as_char(e->left.pexpr, s, PE_AND);
@@ -1138,7 +1135,6 @@ void pexpr_as_char_short(struct pexpr *e, struct gstr *s, int parent)
 		str_append(s, str_get(&e->left.fexpr->name));
 		return;
 	case PE_AND:
-		/* need this hack for the FeatureExpr parser */
 		if (parent != PE_AND)
 			str_append(s, "(");
 		pexpr_as_char_short(e->left.pexpr, s, PE_AND);

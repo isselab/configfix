@@ -13,7 +13,7 @@ void init_config (const char *Kconfig_file);
 void init_data(void);
 
 /* assign SAT-variables to all fexpr and create the sat_map */
-void assign_sat_variables(void);
+void create_sat_variables(void);
 
 /* create True/False constants */
 void create_constants(void);

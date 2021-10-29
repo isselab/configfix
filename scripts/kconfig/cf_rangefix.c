@@ -456,7 +456,7 @@ static void fexpr_add_assumption(PicoSAT *pico, struct fexpr *e, int satval)
 /*
  * get the unsatisfiable soft constraints from the last run of Picosat
  */
-static struct fexpr_list * get_unsat_core_soft(PicoSAT* pico)
+static struct fexpr_list * get_unsat_core_soft(PicoSAT *pico)
 {
 	struct fexpr_list *ret = fexpr_list_init();
 	struct fexpr *e;

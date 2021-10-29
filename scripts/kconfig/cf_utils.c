@@ -29,7 +29,7 @@ void init_config(const char *Kconfig_file)
 }
 
 /*
- * initialize satmap and cnf_clauses_map
+ * initialize satmap
  */
 void init_data(void)
 {
@@ -41,32 +41,25 @@ void init_data(void)
 }
 
 /*
- * bool-symbols have 1 variable (X), tristate-symbols have 2 variables (X, X_m)
+ * create SAT-variables for all fexpr
  */
-static void create_sat_variables(struct symbol *sym)
-{
-	sym->constraints = pexpr_list_init();
-	sym_create_fexpr(sym);
-}
-
-/*
- * assign SAT-variables to all fexpr and create the sat_map
- */
-void assign_sat_variables(void)
+void create_sat_variables(void)
 {
 	unsigned int i;
 	struct symbol *sym;
 
 	printd("Creating SAT-variables...");
 
-	for_all_symbols(i, sym)
-		create_sat_variables(sym);
+	for_all_symbols(i, sym) {
+		sym->constraints = pexpr_list_init();
+		sym_create_fexpr(sym);
+	}
 
 	printd("done.\n");
 }
 
 /*
- * create True/False constants
+ * create various constants
  */
 void create_constants(void)
 {

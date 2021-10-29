@@ -166,7 +166,6 @@ static void get_constraints_bool(void)
 		if (sym_is_choice(sym))
 			add_choice_constraints(sym);
 
-
 		/* build invisible constraints */
 		add_invisible_constraints(sym);
 	}
