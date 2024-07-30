@@ -27,9 +27,9 @@ As configfix is integrated within xconfig, it needs xconfig to run.
 
 ## Instructions
 
-1. Clone or download this repository.
-2. Download the kernel source tree from [the official archives](https://www.kernel.org/) and extract it. It works with version 5.13.
-3. Run `copy_files.sh KERNEL_SOURCE_TREE` in this repository.
+1. Clone or download the configfix repository for [v5.13](https://github.com/delta-one/linux/tree/copy_patch_v5.13) or for [v.6.10](https://github.com/delta-one/linux/tree/copy_patch_v6.10).
+2. Download the corresponding kernel source tree from [the official archives](https://www.kernel.org/) and extract it.
+3. Run `copy_files.sh /path/to/KERNEL_SOURCE_TREE` in the configfix repository.
 4. Make sure that a `.config` is present in `KERNEL_SOURCE_TREE`.
 5. Run `make xconfig` in your extracted source tree.
 
