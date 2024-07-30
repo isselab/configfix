@@ -41,7 +41,7 @@ If the bottom panel is invisible, you need to drag it up. See the following scre
 
 ## Exporting constraints
 
-The constraints as well as the SAT problem in DIMACS can be exported into textfiles. Run `make cfoutconfig` in the extracted source tree to export everything.
+The constraints as well as the SAT problem in DIMACS can be exported into textfiles. Run `make cfoutconfig` in the extracted source tree to export everything. In [this repository](https://bitbucket.org/tberger/variability-models/src/master/), already exported constraints in DIMACS format are available at `/kconfig/abstraction`.
 
 
 ## Limitations
@@ -59,10 +59,21 @@ Contributions to the project are appreciated. You can help, even if you are not 
 2. Merge requests to improve the code/performance or to fix bugs are highly appreciated as well.
 
 
+## Main Paper
+
+* Patrick Franz, Thorsten Berger, Ibrahim Fayaz, Sarah Nadi, and Evgeny Groshev (2021). "ConfigFix: Interactive Configuration Conflict Resolution for the Linux Kernel". In: *2021 IEEE/ACM 43rd International Conference on Software Engineering: Software Engineering in Practice (ICSE-SEIP)*, pp. 91–100. doi: 10.1109/ICSE-SEIP52600.2021.00018
+ * Available at [arxiv.org](https://arxiv.org/pdf/2012.15342)
+
+
 ## Credits
 
 * Patrick Franz (University of Gothenburg) `<deltaone@debian.org>`
 * Ibrahim Fayaz (VecScan AB) `<phayax@gmail.com>`
-* Thorsten Berger (Chalmers | University of Gothenburg) `<thorsten.berger@chalmers.se>`
-* Sarah Nadi (University of Alberta) `<nadi@ualberta.ca>`
+* Thorsten Berger (Chalmers | Ruhr University Bochum) `<thorsten.berger@rub.se>`
+* Sarah Nadi (NYU Abu Dhabi) `<sarah.nadi@nuy.edu>`
 * Evgeny Groshev (Chalmers | University of Gothenburg) `<groshev@student.chalmers.se>`
+* Lukas Günther (Ruhr University Bochum) `<lukas.guenther@rub.de>`
+* Dorina Sfirnaciuc (Ruhr University Bochum) `<dorina.sfirnaciuc@rub.de>`
+* Jude Gyimah (Ruhr University Bochum) `<jude.gyimah@rub.de>`
+* Jan Sollman (Ruhr University Bochum) `<jan.sollman@rub.de>`
+* Ole Schürks (Ruhr University Bochum) `<ole.schuerks@rub.de>`

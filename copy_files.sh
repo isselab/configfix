@@ -6,4 +6,4 @@ if [[ $# -ne 1 ]]; then
 fi
 
 cp -r ./scripts/kconfig $1/scripts
-echo "Files copied successfully. Now run 'make xconfig' in $1."
+echo "Files copied successfully. Now run 'make xconfig' in $1"
