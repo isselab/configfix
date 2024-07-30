@@ -41,7 +41,7 @@ If the bottom panel is invisible, you need to drag it up. See the following scre
 
 ## Exporting constraints
 
-The constraints as well as the SAT problem in DIMACS can be exported into textfiles. Run `make cfoutconfig` in the extracted source tree to export everything. In [this repository](https://bitbucket.org/tberger/variability-models/src/master/), already exported constraints in DIMACS format are available at `/kconfig/abstraction`.
+The constraints as well as the SAT problem in DIMACS can be exported into text files. Run `make cfoutconfig` in the extracted source tree to export everything. In [this repository](https://bitbucket.org/tberger/variability-models/src/master/) at `/kconfig/abstraction`, as well as here at [`/dimacs`](https://bitbucket.org/easelab/configfix/src/master/dimacs/), already exported constraints in DIMACS format are available.
 
 
 ## Limitations
