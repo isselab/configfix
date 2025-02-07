@@ -64,8 +64,8 @@ Contributions to the project are appreciated. You can help, even if you are not 
 * Patrick Franz, Thorsten Berger, Ibrahim Fayaz, Sarah Nadi, and Evgeny Groshev (2021). "ConfigFix: Interactive Configuration Conflict Resolution for the Linux Kernel". In: *2021 IEEE/ACM 43rd International Conference on Software Engineering: Software Engineering in Practice (ICSE-SEIP)*, pp. 91–100. doi: 10.1109/ICSE-SEIP52600.2021.00018
  * Available at [arxiv.org](https://arxiv.org/pdf/2012.15342)
 
-* Jude Gyimah, Jan Sollmann, Ole Schuerks, Patrick Franz, and Thorsten Berger. "A Demo of ConfigFix: Semantic Abstraction of Kconfig, SAT-based Configuration, and DIMACS Export". In: *2025 ACM 19th International Working Conference on Variability Modelling of Software-Intensive Systems (VaMoS 2025)*, doi: https://doi.org/10.1145/3715340.3715445
-  * Available at [ACM Digital Library](https://camps.aptaracorp.com/ACM_PMS/PMS/ACM/VAMOS2025/19/721b1c58-dc3a-11ef-ada9-16bb50361d1f/OUT/vamos2025-19.html)
+* Jude Gyimah, Jan Sollmann, Ole Schuerks, Patrick Franz, and Thorsten Berger. "A Demo of ConfigFix: Semantic Abstraction of Kconfig, SAT-based Configuration, and DIMACS Export". In: *2025 ACM 19th International Working Conference on Variability Modelling of Software-Intensive Systems (VaMoS 2025)*, doi: 10.1145/3715340.3715445
+ * Available at [ACM Digital Library](https://camps.aptaracorp.com/ACM_PMS/PMS/ACM/VAMOS2025/19/721b1c58-dc3a-11ef-ada9-16bb50361d1f/OUT/vamos2025-19.html)
 
 
 
