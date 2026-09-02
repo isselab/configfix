@@ -72,6 +72,10 @@ Contributions to the project are appreciated. You can help, even if you are not 
 
 Click [here](https://www.youtube.com/watch?v=vn2JgK_PTbc) for demo
 
+## Presentations
+
+[ICSE/SEIP](https://www.youtube.com/watch?v=inzJJt4VpnI)
+
 ## Credits
 
 * Patrick Franz (University of Gothenburg) `<deltaone@debian.org>`
