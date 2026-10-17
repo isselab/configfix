@@ -24,14 +24,46 @@ As configfix is integrated within xconfig, it needs xconfig to run.
 
     *  For Debian/Ubuntu: `apt install pkg-config g++ qtbase5-dev`
 
+*  For Linux 6.16 and newer, configfix loads PicoSAT at runtime as
+   `libpicosat-trace.so`. The `picosat` distribution package ships only the
+   binary, so build the shared library with trace support from
+   [source](http://fmv.jku.at/picosat/):
+
+        wget http://fmv.jku.at/picosat/picosat-965.tar.gz
+        tar xzf picosat-965.tar.gz && cd picosat-965
+        ./configure.sh --trace --shared
+        make libpicosat.so
+        gcc -shared -o libpicosat-trace.so picosat.o version.o \
+            -Xlinker -soname -Xlinker libpicosat-trace.so
+        sudo install -m 0755 libpicosat-trace.so /usr/local/lib/
+        sudo ldconfig
+
+   Earlier versions bundle PicoSAT and need no extra setup.
+
 
 ## Instructions
 
-1. Clone or download the configfix repository for [v5.13](https://github.com/delta-one/linux/tree/copy_patch_v5.13) or for [v.6.10](https://github.com/delta-one/linux/tree/copy_patch_v6.10).
+Pick the branch matching your kernel version. The files replace their upstream
+counterparts, so a branch only fits the version it was prepared for:
+
+| Kernel  | Branch |
+| ------- | ------ |
+| 6.17    | [`copy_patch_v6.17`](https://github.com/isselab/configfix/tree/copy_patch_v6.17) |
+| 6.16    | [`copy_patch_v6.16`](https://github.com/isselab/configfix/tree/copy_patch_v6.16) |
+| 6.10    | [`copy_patch_v6.10`](https://github.com/delta-one/linux/tree/copy_patch_v6.10) |
+| 5.13    | [`copy_patch_v5.13`](https://github.com/delta-one/linux/tree/copy_patch_v5.13) |
+
+The 6.10 and 5.13 branches do not build against Linux 6.11 or newer, which
+reworked how Kconfig represents choices.
+
+1. Clone or download the branch for your kernel version.
 2. Download the corresponding kernel source tree from [the official archives](https://www.kernel.org/) and extract it.
 3. Run `copy_files.sh /path/to/KERNEL_SOURCE_TREE` in the configfix repository.
-4. Make sure that a `.config` is present in `KERNEL_SOURCE_TREE`.
-5. Run `make xconfig` in your extracted source tree.
+4. Make sure that a `.config` is present in `KERNEL_SOURCE_TREE` (e.g. `make defconfig`).
+5. Run one of the following in your extracted source tree:
+   * `make xconfig` — the configurator, with conflict resolution
+   * `make cfixconfig` — conflict resolution on the command line
+   * `make cfoutconfig` — export the constraints and the SAT problem in DIMACS
 
 
 If the bottom panel is invisible, you need to drag it up. See the following screenshots.
