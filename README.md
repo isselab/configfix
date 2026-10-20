@@ -107,8 +107,7 @@ Contributions to the project are appreciated. You can help, even if you are not 
 
 ## Demo
 
-Click [here](https://www.youtube.com/watch?v=vn2JgK_PTbc) for demo
-
+Click [here](https://www.youtube.com/watch?v=vn2JgK_PTbc)
 ## Presentations
 
 [ICSE/SEIP](https://www.youtube.com/watch?v=inzJJt4VpnI)
