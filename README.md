@@ -48,16 +48,21 @@ counterparts, so a branch only fits the version it was prepared for:
 
 | Kernel  | Branch |
 | ------- | ------ |
+| 7.3     | [`copy_patch_v7.3`](https://github.com/delta-one/linux/tree/copy_patch_v7.3) |
 | 6.18    | [`copy_patch_v6.18`](https://github.com/delta-one/linux/tree/copy_patch_v6.18) |
 | 6.17    | [`copy_patch_v6.17`](https://github.com/delta-one/linux/tree/copy_patch_v6.17) |
 | 6.16    | [`copy_patch_v6.16`](https://github.com/delta-one/linux/tree/copy_patch_v6.16) |
 | 6.10    | [`copy_patch_v6.10`](https://github.com/delta-one/linux/tree/copy_patch_v6.10) |
 | 5.13    | [`copy_patch_v5.13`](https://github.com/delta-one/linux/tree/copy_patch_v5.13) |
 
-The 6.16, 6.17 and 6.18 branches are mirrored in this repository as well, at
-[`copy_patch_v6.16`](https://github.com/isselab/configfix/tree/copy_patch_v6.16),
-[`copy_patch_v6.17`](https://github.com/isselab/configfix/tree/copy_patch_v6.17)
-and [`copy_patch_v6.18`](https://github.com/isselab/configfix/tree/copy_patch_v6.18).
+7.3 is the current mainline release and 6.18 is the current longterm release;
+6.16 and 6.17 are no longer maintained upstream.
+
+The 6.16, 6.17, 6.18 and 7.3 branches are mirrored in this repository as well,
+at [`copy_patch_v6.16`](https://github.com/isselab/configfix/tree/copy_patch_v6.16),
+[`copy_patch_v6.17`](https://github.com/isselab/configfix/tree/copy_patch_v6.17),
+[`copy_patch_v6.18`](https://github.com/isselab/configfix/tree/copy_patch_v6.18)
+and [`copy_patch_v7.3`](https://github.com/isselab/configfix/tree/copy_patch_v7.3).
 Both copies are the same commits, so either one works.
 
 The 6.10 and 5.13 branches do not build against Linux 6.11 or newer, which
