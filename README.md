@@ -48,10 +48,15 @@ counterparts, so a branch only fits the version it was prepared for:
 
 | Kernel  | Branch |
 | ------- | ------ |
-| 6.17    | [`copy_patch_v6.17`](https://github.com/isselab/configfix/tree/copy_patch_v6.17) |
-| 6.16    | [`copy_patch_v6.16`](https://github.com/isselab/configfix/tree/copy_patch_v6.16) |
+| 6.17    | [`copy_patch_v6.17`](https://github.com/delta-one/linux/tree/copy_patch_v6.17) |
+| 6.16    | [`copy_patch_v6.16`](https://github.com/delta-one/linux/tree/copy_patch_v6.16) |
 | 6.10    | [`copy_patch_v6.10`](https://github.com/delta-one/linux/tree/copy_patch_v6.10) |
 | 5.13    | [`copy_patch_v5.13`](https://github.com/delta-one/linux/tree/copy_patch_v5.13) |
+
+The 6.16 and 6.17 branches are mirrored in this repository as well, at
+[`copy_patch_v6.16`](https://github.com/isselab/configfix/tree/copy_patch_v6.16)
+and [`copy_patch_v6.17`](https://github.com/isselab/configfix/tree/copy_patch_v6.17).
+Both copies are the same commits, so either one works.
 
 The 6.10 and 5.13 branches do not build against Linux 6.11 or newer, which
 reworked how Kconfig represents choices.
