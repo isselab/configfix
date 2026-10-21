@@ -92,7 +92,7 @@ The constraints as well as the SAT problem in DIMACS can be exported into text f
 
 * Some conflicts can be fixed using various alternative fixes. We currently limit the number of proposed fixes to 3 for performance reasons. While every proposed fix should still result in the desired outcome, the solutions can be suboptimal in some cases. For example, an option can be enabled while still being invisible in the configurator.
 * Resolving a conflict that requires a search needs roughly 200 MB of RAM, most of it the SAT solver's clause database. Conflicts that can be answered without the solver need about 30 MB. This does not depend on the size of your `.config`: an `allmodconfig` costs the same as a `defconfig`. (Measured on x86 for Linux 7.3; older kernels are slightly smaller.)
-* The *Apply Fix*-button will try to apply all values from the selected fix. Sometimes it is not possible to set all values. In this case, please report the issue (see below).
+* Applying a fix sets every value it contains, but occasionally some of them cannot be set. Both frontends say so when that happens: `cfixconf` marks each such value `(failed)`, and the configurator reports how many of the values were applied. In the configurator, symbols that did not reach their target value are shown in red, or in grey where they are not editable. Please report it if you hit this (see below).
 
 
 ## Contributing
